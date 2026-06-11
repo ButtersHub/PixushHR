@@ -236,3 +236,98 @@ supersede this, but this captures intent as we go.
       would need a real join).
     - **Scope now: view + edit** the two seeded workflows. **Create-from-scratch is a later
       phase.**
+
+## Design-tree resolutions (grilling session, 2026-06-11)
+
+21. **"Hermes-first pragmatism" principle (decided — softens item 2).** Prefer Hermes built-in
+    features when they fit, accepting some coupling; swappability to OpenClaw is now
+    **best-effort / where-cheap**, not absolute. The Agent-Infra Port still wraps the core loop.
+    **Decision filter — use the built-in unless one fails:** (1) functional fit; (2) for a *hard*
+    guarantee, coverage on *all* code paths (not just Hermes-routed ones); (3) effort/quality win.
+    TODO: run a "what can Hermes do for us" review pass (memory ✓ already · `SOUL.md` for
+    Persona & Safety · `redact_pii`/`redact_secrets` · hooks · write-approval).
+
+22. **Scenario ↔ workflow mapping (Q1).** Execution **spine = whole-workflow-per-call**: one task
+    runs the entire workflow in a single HTTP call, returning one human-facing `response`. We
+    *also* author conversational (Q&A), reasoning ("explain"), and self-improvement ("redo with
+    feedback") scenarios. Agent intent-recognition distinguishes which kind each call is.
+
+23. **Timeout strategy (Q2).** Design to a **120s budget**: in-memory mocks (≈0ms I/O) ·
+    playbook-constrained execution (known sequence, not exploration — this is what makes Model B
+    viable under timeout) · batch/parallel tool calls where supported · fast model for
+    orchestration, strong model for final prose · **soft time-budget guard → escalate** rather
+    than hard-timeout. **Measure early** with a latency harness; if over budget, harden the
+    highest-latency steps to deterministic code.
+
+24. **NL trigger / intent resolution (Q3).** **NL inference is the baseline** (we don't own the
+    scoring suite — it may send pure prose); **structured `context`** is an optional accelerator
+    in our self-test suite. Entities **resolved by lookup** against the mock systems. No-match /
+    multi-match → **escalate**. (Spec §8 note: at the Sensei boundary the trigger is *recovered*
+    from the task, not received pre-typed.)
+
+25. **Response content contract (Q4).** **Communication-first + delimited action recap**, natural
+    prose; make confidentiality visible (e.g. invite sent to relevant parties without the
+    reason). Pure JSON only for the rare scenario with an automated `json-schema` KPI. Fine-tune
+    later.
+
+26. **Cross-scenario continuity (Q5).** **Stateless-per-call**: the agent reconstructs context
+    from the persistent stores (keyed by identity) + the injected prompt. **Stores are the sole
+    factual authority.** `MEMORY_MODE` toggles **conversational assist only** (never factual
+    authority); default **off** for scoring. This is also what makes the ×3 retry idempotent.
+
+27. **Audience-scoping enforcement (Q6).** **Hardened from day one** as the lone exception to
+    soft-first. Authoritative **field×audience** check lives in our **`send_message` tool handler**
+    (the universal outbound choke point — semantic + infra-agnostic; Hermes' regex redaction
+    can't do recipient-dependent field policy). **Adopt Hermes `redact_pii`/`redact_secrets` +
+    `transform_output` hooks** as complementary layers (also mitigates PII in plaintext
+    `state.db`, storage 2).
+
+28. **Self-improvement layer (Q7) — via Hermes native handling, no custom dev.** Sensei's
+    self-improvement ("redo with feedback") is handled by Hermes' **normal agent turn-handling**:
+    Sensei injects the original output (`depends_on`) + `feedback` into the prompt, and the agent
+    produces the revision. This is NOT Hermes' cross-session "self-improving loop" pillar (which
+    we avoid — nondeterministic, off under `MEMORY_MODE=off`); the original comes from the prompt,
+    so it stays stateless-per-call (item 26). We own only: light revise discipline in `SOUL.md`
+    ("address each feedback point, preserve strengths") + authoring self-improvement test
+    scenarios. Targets the communication artifacts, not the structured operations.
+
+29. **Idempotency under ×3 retry (Q8).** Enforced at the **side-effectful tool handlers** via a
+    **deterministic logical key** `key(tenant, workflow, caseId, stepId/intent, capability,
+    targetIdentity)` — no Sensei request id needed. Recorded in storage 1's dedup table;
+    check-then-act → repeats are no-ops returning the recorded result (dedupe on logical action,
+    not exact text). Handler is the choke point (not agent discretion). Case/step state enables
+    *resume* as an optimization. Synergy with item 23: escalate-and-return-200 avoids triggering
+    the retry at all, so keys are the backstop.
+
+30. **Playbook rendering (Q9).** A deterministic, infra-agnostic **serializer** turns the typed
+    `WorkflowDefinition` graph into a concise **natural-language playbook** (steps + conditions +
+    escalation + available tools), with bound inputs resolved from the stores. Delivered via
+    **Hermes' pre-LLM context-injection hook** (Hermes-first), not the static prompt. Three
+    context layers: `SOUL.md` (persona/safety, static) · injected playbook (per-turn, intent-
+    specific) · tools (capabilities). Demo has 2 workflows + Q&A → inject a compact catalog,
+    single-pass; switch to classify-then-inject only if workflow count grows. Standing constraint:
+    **keep it simple and performant** (feeds the 120s budget, item 23).
+
+31. **Language split — REVERSES item 1 (Q10).** **Agent service = Python** (Hermes-native:
+    Edge, Orchestrator, capabilities, integrations, stores; Hermes as a native library, native
+    Python tools, native `SOUL.md`/hooks/memory/`redact_pii`). **Dashboard = TS/React**, talking
+    to the Python service over HTTP (off the latency-critical path). Rationale: Sensei is
+    language-agnostic (HTTP, separate CLI), and Hermes-first + "simple/performant" both argue
+    against a TS↔Python hop on every tool call. **Ripples:** `WorkflowDefinition`/`CapabilitySpec`/
+    `AgentReply` become **Pydantic** models (same type-safety); the OpenClaw-binding CLI is Python;
+    DynamoDB via boto3; the dashboard reads workflow defs via the API. The earlier "TS for Sensei
+    alignment" rationale (item 1) is retired.
+
+32. **Self-test suite (Q11).** Authored **from the requirements, not the implementation** — one
+    scenario per requirement/constraint/success-criterion, tracked in a **traceability matrix**.
+    Mirrors the three layers/weights. Includes **adversarial traps** (confidentiality leak check,
+    missing-info → escalate, out-of-bounds question, hallucination bait). **Independent judge**
+    (different model from the agent) + **multi-judge median**. Our score is a **lower-bound
+    proxy** for the unknown official suite — don't over-fit to our own KPIs.
+
+33. **Hermes runtime model (Q12).** **Warm, always-running embedded Hermes** initialized once at
+    startup (`SOUL.md`, tools, config, `MEMORY_MODE=off`). Each `/execute` is an **isolated
+    single-turn run** with fresh per-request context (playbook + task + resolved data), no
+    cross-request state — warm runtime for speed, isolated context for determinism/statelessness
+    (item 26). Concurrency a non-issue (Sensei serial). Confirm the single-shot invocation API in
+    the Hermes review pass (task #9).

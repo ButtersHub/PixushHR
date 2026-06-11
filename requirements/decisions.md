@@ -7,10 +7,15 @@ supersede this, but this captures intent as we go.
 
 1. **Language/runtime:** TypeScript / Node — aligns with Sensei (TS/Node), lets us run the
    Sensei CLI and embed our own self-test suite.
+   > ⚠️ **SUPERSEDED by item 31.** Agent service is now **Python** (Hermes-native); dashboard is
+   > **TS/React**. The "TS aligns with Sensei" rationale is retired — Sensei is language-agnostic
+   > over HTTP and runs as a separate CLI.
 
 2. **Provider & infra agnostic:** All LLM reasoning, tool-calling, and memory go through an
    **Agent-Infra Port**. Adapters: **Hermes** (preferred) and **OpenClaw** (swappable). The
    HR domain never imports either directly.
+   > ⚠️ **SOFTENED by item 21 (Hermes-first pragmatism).** Prefer Hermes built-ins where they
+   > fit; swappability to OpenClaw is now best-effort / where-cheap, not absolute.
 
 3. **Top-level shape:** Five layers — Platform Edge → Agent Orchestrator → HR Domain Core →
    Ports (Agent-Infra + Integration) → Foundations (synthetic data, audit log, self-test
@@ -74,7 +79,10 @@ supersede this, but this captures intent as we go.
 
 9. **Hermes memory role (decided).** Hermes' local memory (`~/.hermes/`: `MEMORY.md`,
    `USER.md`, `state.db`, `pending/`) is **ephemeral working memory only — never the system of
-   record.** Durable employee/HRIS state lives in DynamoDB and is reached via tools.
+   record.** Durable state lives in the stores and is reached via tools — **domain/employee data
+   in the simulated systems (storage 4, in-memory Repository); our own control-plane state in
+   DynamoDB (storage 1).** *(Corrected per the four-storage model, item 8 — employee/HRIS data is
+   NOT in DynamoDB.)*
 
 10. **No external memory providers (decided).** Built-in local memory is always on and is
     sufficient; external providers are optional and many are cloud-backed (Mem0, Supermemory,
@@ -107,10 +115,11 @@ supersede this, but this captures intent as we go.
     reached only through tools:
     - **Canonical domain models** (`Employee`, `Contract`, `Department`, `OnboardingCase`,
       `OffboardingCase`, `Message`, `CalendarEvent`). Workflows + agent speak only these.
-    - **Adapters** per port: **Mock** (demo) = stateful simulator backed by DynamoDB synthetic
-      data — validates, idempotent upsert, deterministic, audited, returns **structured errors**
-      the agent escalates on. **Real** (later) = actual API + anti-corruption layer (vendor DTO ↔
-      canonical). Same interface → drop-in.
+    - **Adapters** per port: **Mock** (demo) = stateful simulator backed by a `Repository`
+      (**in-memory for the demo = storage 4**; see item 8, *not* DynamoDB) — validates, idempotent
+      upsert, deterministic, audited, returns **structured errors** the agent escalates on.
+      **Real** (later) = actual API + anti-corruption layer (vendor DTO ↔ canonical). Same
+      interface → drop-in.
     - **Inbound triggers:** demo trigger = Sensei's HTTP `task`; real webhooks/EventBridge are a
       later inbound adapter.
     - Mock implementation style: **in-process adapters** (not standalone fake API servers) for
@@ -331,3 +340,20 @@ supersede this, but this captures intent as we go.
     cross-request state — warm runtime for speed, isolated context for determinism/statelessness
     (item 26). Concurrency a non-issue (Sensei serial). Confirm the single-shot invocation API in
     the Hermes review pass (task #9).
+
+34. **Connector scope — "seeded" vs "catalog-available" (decided; resolves external-review notes
+    1–3).** Every named system has a role-port and appears in the dashboard Catalog, but only some
+    are **seeded/active in the demo**:
+    - **Seeded (used by the two workflows):** Shapes (`HrisPort`), Comeet (`AtsPort`), **Teams** &
+      **Email** (`MessageChannel`), Branding (`ContentPort`), Calendar (`CalendarPort`).
+    - **Catalog-available, NOT seeded (installable — demonstrates extensibility):**
+      - **Slack** — a `MessageChannel` impl. Office hours scoped channels to Teams + email, so
+        Slack is installable but not a default demo channel. *Channel enum includes `slack` for
+        completeness.*
+      - **Spark Hire** — an alternate `AtsPort` adapter (brief's "Comeet / Spark Hire"). Comeet is
+        the seeded ATS; Spark Hire is a future/alternate adapter, not in the demo path.
+      - **Trello** (`TaskBoardPort`) — named in the brief but **not used by either seeded
+        workflow**. **Explicitly deferred** to catalog-available. *Optional stretch:* a lightweight
+        "create onboarding checklist card" action if time allows; otherwise a readiness signal only.
+    - This is the Catalog-vs-Installed split already in the dashboard (item 18), now stated
+      explicitly so implementers don't expect Slack/Spark Hire/Trello in the demo path.

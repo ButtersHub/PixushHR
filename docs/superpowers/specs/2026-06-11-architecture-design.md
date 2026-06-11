@@ -120,7 +120,7 @@ A **Pydantic** model. The agent always returns it; the Edge projects per caller.
 class AgentReply(BaseModel):
     request_id: str            # tracing / idempotency / audit
     tenant: str                # multi-tenant seam ("papaya")
-    user: UserRef              # { id, name, role, channel: sensei|teams|email }
+    user: UserRef              # { id, name, role, channel: sensei|teams|slack|email }
     response: str              # human-facing text — the ONLY thing Sensei scores
     actions: list[AuditedAction] = []   # side-effects performed
     meta: dict = {}
@@ -227,6 +227,17 @@ capability functions).
 - **Tools are capability-level** (`send_message(to, body, channel?)`), platform chosen by
   router/param — not per-vendor tool names.
 - **Inbound triggers:** demo = Sensei's HTTP `task`; real webhooks/EventBridge later.
+
+### 7.1 Connector scope — seeded vs catalog-available
+Every named system has a role-port and appears in the dashboard Catalog, but only some are
+**seeded/active in the demo** (the rest are installable to demonstrate extensibility):
+- **Seeded (used by the two workflows):** Shapes (`HrisPort`) · Comeet (`AtsPort`) · **Teams** &
+  **Email** (`MessageChannel`) · Branding (`ContentPort`) · Calendar (`CalendarPort`).
+- **Catalog-available, NOT seeded:** **Slack** (a `MessageChannel` impl — office hours scoped
+  channels to Teams + email, so installable but not a default channel; the channel enum still
+  includes `slack`) · **Spark Hire** (an alternate `AtsPort` adapter — Comeet is the seeded ATS) ·
+  **Trello** (`TaskBoardPort` — named in the brief but used by neither seeded workflow; **deferred**
+  to catalog-available, with an optional stretch "create onboarding checklist card" action).
 
 ---
 

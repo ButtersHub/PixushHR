@@ -21,3 +21,8 @@ def test_execute_accepts_missing_context():
     resp = client.post("/execute", json={"task": "hello"})
     assert resp.status_code == 200
     assert isinstance(resp.json()["response"], str)
+
+
+def test_execute_rejects_missing_task():
+    resp = client.post("/execute", json={"context": {}})
+    assert resp.status_code == 422

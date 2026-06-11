@@ -16,6 +16,8 @@ class ExecuteResponse(BaseModel):
     """Sensei wire response. Sensei scores only `response`; `structured` is reporting-only."""
 
     response: str
+    # Optional on the Sensei wire (an agent may return only `response`); our service
+    # always populates it via AgentReply.to_execute_response() for reporting/debugging.
     structured: dict[str, Any] | None = None
 
 

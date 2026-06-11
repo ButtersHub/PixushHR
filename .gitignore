@@ -18,6 +18,6 @@ dist/
 
 # Python service
 service/.venv/
-__pycache__/
+service/**/__pycache__/
 *.pyc
-.pytest_cache/
+service/.pytest_cache/

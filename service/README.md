@@ -4,8 +4,8 @@ Python (FastAPI) service implementing the Sensei HTTP contract for the PixushHR
 onboarding/offboarding agent. See `docs/superpowers/specs/2026-06-11-architecture-design.md`.
 
 ## Endpoints
-- `GET /health` -> `{"status":"ok"}`
-- `POST /execute` -> accepts `{task, context}`, returns `{response, structured}`.
+- `GET /health` → `{"status":"ok"}`
+- `POST /execute` → accepts `{task, context}`, returns `{response, structured}`.
   Sensei scores only `response`; `structured` mirrors the internal envelope (reporting-only).
 
 ## Develop

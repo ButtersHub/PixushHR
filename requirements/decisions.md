@@ -357,3 +357,46 @@ supersede this, but this captures intent as we go.
         "create onboarding checklist card" action if time allows; otherwise a readiness signal only.
     - This is the Catalog-vs-Installed split already in the dashboard (item 18), now stated
       explicitly so implementers don't expect Slack/Spark Hire/Trello in the demo path.
+
+## External review round 2 resolutions
+
+35. **PII → LLM "authorized systems" boundary (review #1).** **Demo: non-issue** — synthetic data
+    only, so no real PII crosses any boundary (incl. the model provider). **Production: define the
+    authorized boundary** — bring the model inside it (self-hosted / VPC / Bedrock-with-DPA, or a
+    local / Nous-Portal model via Hermes' custom-endpoint support) **or** PII-minimize before
+    egress. Spec gets an explicit data-flow note.
+
+36. **Communication-egress policy — generalizes item 27 (review #2).** The field×audience
+    confidentiality gate applies to **all people-facing egress tools**, not just `send_message`:
+    **`send_message` · `calendar.create_invite` · recipient-bound `document.generate`/delivery.**
+    These share one **communication-egress policy layer** (the choke point). *Internal* surfaces
+    (audit, dashboard traces, tool-call args/results, Hermes `state.db`) are a **separate** concern
+    — handled by `redact_pii` + encryption + audit redaction (item 37) — **not** audience-scoping.
+
+37. **Audit redaction (review #3).** Demo logs **synthetic data raw**; the store is **encrypted
+    (S3+KMS) and authorized-internal**. The **dashboard display role-gates/redacts** sensitive
+    fields (termination reason, salary) for non-authorized viewers. **No hashing** (over-build).
+
+38. **Same-business-day metric — minimal, push back on SLA machinery (review #4).** Demo responses
+    are **synchronous** (one call, seconds), so "same business day" is trivially met and proven by
+    **communication-log timestamps**. **No** business-hours calendar / SLA clock / queue /
+    reminders — that's production async-channel infrastructure, out of demo scope. Validation =
+    response-log evidence in scenarios.
+
+39. **HRIS required fields & validation (review #5).** Define **required Shapes fields** — onboarding:
+    `name, role, startDate, department, managerId, employmentType`; offboarding: `terminationDate,
+    reason, status, lastWorkingDay` — with validation rules (presence · type/format · referential
+    e.g. manager/dept exists · date-sanity e.g. start not in past, lastWorkingDay ≥ today).
+    **Validation failure → structured error → escalate** (never guess). Lives in the `CapabilitySpec`
+    input schemas + mock-adapter rules; full enumeration in the implementation plan.
+
+40. **Workflow terminal states (review #6).** `completed` · `completed_with_escalation` · `failed`.
+    **Completion metric redefined:** success = reaching a *clean* terminal (`completed` OR
+    `completed_with_escalation`); only `failed` (crash/timeout/unhandled) is non-completion. This
+    reconciles "100% end-to-end" (brief) with "escalation is an acceptable ending" (office hours).
+    Case terminal state is tracked in storage 1 and shown on the dashboard.
+
+41. **Q&A modeling — "available throughout" (review #7).** Modeled as **separate Q&A scenarios /
+    later channel events**, NOT a long-lived open connection within one whole-workflow call. The
+    agent reconstructs context from the stores by identity (stateless-per-call, items 22 & 26).
+    Made explicit in the spec.

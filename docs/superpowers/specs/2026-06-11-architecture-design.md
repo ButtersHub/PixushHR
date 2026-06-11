@@ -141,6 +141,11 @@ call, returning one human-facing `response`. We also author **conversational (Q&
 **reasoning** ("explain"), and **self-improvement** ("redo with feedback") scenarios; the agent's
 intent recognition distinguishes them.
 
+The brief's *"remain available to answer questions throughout the process"* is modeled as
+**separate Q&A scenarios / later channel events — not a long-lived open connection inside one
+call.** Each question is its own call; the agent reconstructs the employee's context from the
+stores by identity (stateless-per-call, §5.5).
+
 ### 5.2 Timeout strategy (design to 120s)
 In-memory mocks (~0ms I/O) · playbook-constrained execution (known sequence, not exploration — the
 thing that makes Model B viable under a timeout) · batch/parallel tool calls where supported ·
@@ -187,6 +192,18 @@ nondeterministic). We own only light revise discipline in `SOUL.md` + the test s
 **Warm, always-running embedded Hermes**, initialized once at startup (`SOUL.md`, tools, config,
 `MEMORY_MODE=off`). Each `/execute` is an **isolated single-turn run** — fresh per-request context,
 no cross-request state. Concurrency is a non-issue (Sensei is serial).
+
+### 5.10 Terminal states & completion metric
+Each workflow case ends in one terminal state, tracked in storage 1 and shown on the dashboard:
+**`completed`** · **`completed_with_escalation`** · **`failed`**. The brief's *"100% of workflows
+completed end-to-end"* is reconciled with the office-hours *"escalation is an acceptable ending"*
+by defining **success = reaching a *clean* terminal** (`completed` OR `completed_with_escalation`);
+only `failed` (crash / hard-timeout / unhandled error) counts as non-completion.
+
+### 5.11 Same-business-day responses
+Demo responses are **synchronous** (one call, seconds), so *"same business day response"* is
+trivially satisfied and evidenced by **communication-log timestamps**. No business-hours calendar /
+SLA clock / queue / reminders — that's production async-channel infrastructure, out of demo scope.
 
 ---
 
@@ -249,11 +266,25 @@ Every named system has a role-port and appears in the dashboard Catalog, but onl
 - **Model:** a `tenant` partition key + minimal `User { id, name, role, channel }` in DynamoDB.
   Only Papaya + named roles seeded. No RBAC engine.
 - **Audience information-scoping — HARDENED from day one** (the lone exception to soft-first).
-  Enforced as a **field×audience policy in the `send_message` tool handler** (universal outbound
-  choke point — semantic + infra-agnostic; Hermes' regex redaction can't do recipient-dependent
-  field policy). Canonical case: the last-day calendar invite to "relevant parties" carries
-  **logistics only, NOT the termination `reason`.** Hermes `redact_pii`/hooks add a complementary
-  generic layer.
+  Enforced as a **field×audience policy in a communication-egress layer** that wraps **all
+  people-facing egress tools** — `send_message`, `calendar.create_invite`, and recipient-bound
+  `document.generate`/delivery — not just `send_message` (semantic + infra-agnostic; Hermes' regex
+  redaction can't do recipient-dependent field policy). Canonical case: the last-day calendar
+  invite to "relevant parties" carries **logistics only, NOT the termination `reason`.** Hermes
+  `redact_pii`/hooks add a complementary generic layer.
+  - **Internal surfaces are a *separate* concern** (not audience-scoping): tool-call args/results,
+    Hermes `state.db`, and logs are covered by `redact_pii`/`redact_secrets` + encryption; the
+    audit log + its dashboard view by §8.1.
+
+### 8.1 Confidentiality data-flow (authorized systems)
+- **PII → LLM boundary.** *Demo:* a non-issue — **synthetic data only**, so no real PII crosses any
+  boundary (incl. the model provider). *Production:* the model must be brought **inside** the
+  authorized boundary (self-hosted / VPC / Bedrock-with-DPA, or a local / Nous-Portal model via
+  Hermes' custom-endpoint support) **or** PII must be minimized before egress. This is the explicit
+  "authorized systems" definition the brief's constraint requires.
+- **Audit redaction.** Demo logs **synthetic data raw**; the store is **encrypted (S3+KMS),
+  authorized-internal**. The **dashboard display role-gates/redacts** sensitive fields (termination
+  reason, salary) for non-authorized viewers. No hashing (over-build for the demo).
 
 ---
 
@@ -431,6 +462,10 @@ built by composing §13 components to satisfy a §12 panel description.
   invocation API, write-approval; adopt what fits.
 - **Latency harness** — build early to validate the 120s budget (§5.2).
 - **Concrete `CapabilitySpec` / tool list** — enumerate each capability's input/output schema.
+- **Shapes required fields & validation** — onboarding: `name, role, startDate, department,
+  managerId, employmentType`; offboarding: `terminationDate, reason, status, lastWorkingDay`; rules
+  (presence · type/format · referential · date-sanity); validation failure → structured error →
+  escalate. (Encoded in the `CapabilitySpec` schemas + mock-adapter rules.)
 - **Seeded workflow graphs** — finalize the onboarding/offboarding node graphs.
 - **Self-test suite contents** — author scenarios + KPIs + traceability matrix.
 - **Observability / error-handling** beyond escalation.

@@ -1,0 +1,17 @@
+# Brainstorm scratch (visual companion)
+.superpowers/
+
+# Third-party clone kept locally for reference only (has its own git history)
+reference/
+
+# Local Claude Code settings (personal)
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+
+# Node (for when code lands)
+node_modules/
+dist/
+.env
+.env.*

@@ -1,0 +1,23 @@
+services:
+  engine:
+    build: ./engine
+    environment:
+      PORT: "3000"
+      HERMES_URL: "http://agent:8642"
+      HERMES_API_KEY: "change-me-dev-key"
+    ports: ["3000:3000"]
+
+  agent:
+    build: ./agent
+    env_file: ./agent/.env
+    environment:
+      ENGINE_URL: "http://engine:3000"
+    ports: ["8642:8642"]
+    depends_on: [engine]
+
+  dashboard:
+    build: ./dashboard
+    environment:
+      VITE_ENGINE_URL: "http://localhost:3000"
+    ports: ["8080:80"]
+    depends_on: [engine]

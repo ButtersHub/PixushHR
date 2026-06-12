@@ -21,3 +21,6 @@ dist/
 dashboard/dist/
 dashboard/test-results/
 dashboard/playwright-report/
+
+# Agent secrets (never commit)
+agent/.env

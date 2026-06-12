@@ -3,8 +3,14 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ChatResult {
+  content: string;
+  model?: string;
+  usage?: { input?: number; output?: number };
+}
+
 export interface HermesClient {
-  chat(messages: ChatMessage[]): Promise<string>;
+  chat(messages: ChatMessage[]): Promise<ChatResult>;
 }
 
 export class HttpHermesClient implements HermesClient {
@@ -14,14 +20,25 @@ export class HttpHermesClient implements HermesClient {
     private model = "hermes-agent",
   ) {}
 
-  async chat(messages: ChatMessage[]): Promise<string> {
+  async chat(messages: ChatMessage[]): Promise<ChatResult> {
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify({ model: this.model, messages, stream: false }),
     });
     if (!res.ok) throw new Error(`hermes ${res.status}: ${await res.text()}`);
-    const body = (await res.json()) as { choices: { message: { content: string } }[] };
-    return body.choices[0]?.message?.content ?? "";
+    const body = (await res.json()) as {
+      choices: { message: { content: string } }[];
+      model?: string;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    return {
+      content: body.choices[0]?.message?.content ?? "",
+      model: body.model,
+      usage: {
+        input: body.usage?.prompt_tokens,
+        output: body.usage?.completion_tokens,
+      },
+    };
   }
 }

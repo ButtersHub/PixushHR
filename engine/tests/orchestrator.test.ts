@@ -1,19 +1,20 @@
 import { describe, it, expect } from "vitest";
 import { buildApp } from "../src/app.js";
 import { InMemoryStore } from "../src/store.js";
-import type { HermesClient, ChatMessage } from "../src/hermes.js";
+import { runExecute } from "../src/orchestrator.js";
+import type { HermesClient, ChatMessage, ChatResult } from "../src/hermes.js";
 
 class FakeHermes implements HermesClient {
   public lastMessages: ChatMessage[] = [];
   constructor(private reply: string) {}
-  async chat(messages: ChatMessage[]): Promise<string> {
+  async chat(messages: ChatMessage[]): Promise<ChatResult> {
     this.lastMessages = messages;
-    return this.reply;
+    return { content: this.reply };
   }
 }
 
 class ThrowingHermes implements HermesClient {
-  async chat(): Promise<string> {
+  async chat(): Promise<ChatResult> {
     throw new Error("hermes down");
   }
 }
@@ -51,5 +52,19 @@ describe("/execute", () => {
     const app = buildApp({ store: new InMemoryStore(), hermes: new FakeHermes("ok") });
     const res = await app.inject({ method: "POST", url: "/execute", payload: { task: "hi" } });
     expect(res.json().structured.tenant).toBe("papaya");
+  });
+});
+
+describe("runExecute (no-op tracing path)", () => {
+  it("returns content from Hermes and correct shape when tracing is DISABLED (no LANGFUSE env)", async () => {
+    // LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY are absent in the test environment,
+    // so tracing falls through to the no-op path — this validates that behaviour.
+    const hermes = new FakeHermes("Hello from Hermes!");
+    const reply = await runExecute({ task: "Onboard Test User", context: { tenant: "acme" } }, hermes);
+    expect(reply.response).toBe("Hello from Hermes!");
+    expect(reply.tenant).toBe("acme");
+    expect(typeof reply.requestId).toBe("string");
+    expect(reply.user.channel).toBe("sensei");
+    expect(reply.actions).toEqual([]);
   });
 });

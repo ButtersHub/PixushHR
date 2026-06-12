@@ -60,8 +60,8 @@ and stage-driveable. It talks to a backend "engine" over HTTP.
 - Every interactive component must define: default / hover / focus / active / disabled / loading /
   error.
 
-## Suggested deliverable #4 (the open slot)
-Pick one (or tell us yours): **(a) a states & accessibility checklist** the implementer ticks per
-component; **(b) interaction & motion guidelines** (durations, easing, what animates and what
-doesn't); **(c) a living component gallery** (Storybook) plan; **(d) responsive/breakpoint rules**.
-Recommendation: **(a) states & accessibility checklist** — highest leverage for "any future AI."
+## Deliverable #4 (confirmed): States & accessibility checklist
+A **per-component checklist** the implementer ticks before shipping any component — every required
+state (default/hover/focus/active/disabled/loading/error) plus the accessibility requirements
+(contrast, keyboard, focus, ARIA, reduced-motion). Produced as part of Prompt 3 and captured in
+`component-guidelines.md`.

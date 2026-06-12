@@ -29,7 +29,7 @@ results back here so any future AI (or human) implements against a single, docum
 1. **Design system** — `design-system.md` (tokens + component inventory with states).
 2. **Screen designs** — `screens.md` (all screens, composed from the system).
 3. **Component guidelines** — `component-guidelines.md` (rules for future implementers).
-4. *(open — see "Suggested #4" in `brief.md`)*
+4. **States & accessibility checklist** — a per-component checklist (in `component-guidelines.md`).
 
 ### Implementation deliverables (later, separate branch)
 1. **Shared UI package** — `dashboard/src/ui/` (tokens + components as React/TS, used everywhere).

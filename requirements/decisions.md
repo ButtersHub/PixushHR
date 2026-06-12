@@ -467,3 +467,30 @@ supersede this, but this captures intent as we go.
     (b) inbound WhatsApp. Deferred: DynamoDB/S3 (in-memory only), the send-gate, offboarding,
     encryption, real model-auth + AWS specifics (wired at deploy). Supersedes the breadth-first
     7-plan sequence for now; widen afterward.
+
+## Build status (lean slice) — 2026-06-12
+
+51. **Lean E2E slice — BUILT & verified working (local Docker, real Hermes).** Two services +
+    dashboard on docker-compose: **engine** (TS/Fastify — `/execute`, `/tools/execute`, `/audit`,
+    in-memory store + audit, `hris.upsert_employee`); **agent** (Hermes `gateway` container,
+    OpenAI-compatible API, model = **gpt-5.5 via OpenAI Codex device-auth** — the "OpenAI with
+    auth, not API key" path; the **`hris-tool` skill** HTTP-calls the engine, no MCP); **dashboard**
+    (React/Vite). Verified: engine unit + code-e2e (16 tests), Playwright UI e2e, and a **live
+    Docker run with real Hermes** (`/execute` → agent reasons → skill → engine tool → audit →
+    warm response). **Known gaps/deferred:** WhatsApp bridge (Hermes channels are reply-only +
+    the Node `bridge.js` isn't built in our slim image — parked); `structured.actions[]` not yet
+    populated from Hermes tool-calls (audit is the source of truth); DynamoDB/S3 (in-memory now);
+    offboarding; the confidentiality send-gate; AWS deploy.
+
+52. **Langfuse observability — added to the engine (decided + built).** Followed the official
+    `langfuse` Agent Skill (installed at `.agents/skills/langfuse`), **docs-first** with the
+    current **v4 OTel SDK** (`@langfuse/tracing` + `@langfuse/otel` + `@opentelemetry/sdk-node`) —
+    *not* the legacy `new Langfuse()` API. Engine is **env-gated** (no-op without keys): a trace
+    `onboarding-execute` per `/execute` with a nested **`hermes-chat` generation** (model + token
+    usage from the OpenAI-compatible response), tenant/feature tags, and **deliberate input**
+    (only task + completion — the skill's #1 masking rule), flushed on `SIGTERM`/`SIGINT`.
+    **Verified:** a live trace appears in Langfuse Cloud (EU). Keys live in the **git-ignored
+    `.env`** (and must be **rotated** — they were exposed in chat). **Follow-ups:** confirm token
+    capture / cost in the UI; tune flush interval for prompt runtime export (currently flushes on
+    interval/shutdown); nest tool-call spans (`/tools/execute`) under the trace via a correlation
+    id; explore deeper Hermes-internal LLM tracing.

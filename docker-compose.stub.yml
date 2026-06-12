@@ -1,0 +1,8 @@
+# Local dev override: run the engine in stub mode (no real Hermes / no model credential).
+# Usage (no-creds containers smoke):
+#   docker compose -f docker-compose.yml -f docker-compose.stub.yml up --build engine dashboard
+# For the full real-Hermes run, use plain `docker compose up --build` (without this file).
+services:
+  engine:
+    environment:
+      HERMES_MODE: "stub"

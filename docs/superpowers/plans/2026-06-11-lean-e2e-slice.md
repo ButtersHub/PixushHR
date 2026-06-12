@@ -10,6 +10,13 @@
 
 **Precision note (decisions 47–49):** "OpenAI-compatible" is only the engine↔Hermes *wire format*, NOT a dependency on OpenAI the company. The model Hermes reasons with is separate config. The tool callback is a **Hermes skill → engine HTTP**, not MCP.
 
+> **STATUS (2026-06-12): Phases 0–3 + 5 DONE; the slice runs locally on Docker with real Hermes.**
+> Engine, agent (Hermes/Codex), dashboard, docker-compose, code-e2e + Playwright e2e all green;
+> verified a live `/execute → skill → tool → audit` loop. **Plus Langfuse tracing** added to the
+> engine (decision #52). **Remaining:** Phase 4 Task 12 (AWS deploy), the WhatsApp bridge (Task 11
+> step 3 — parked, Hermes channels are reply-only + bridge not built), and the widening items in
+> "Deferred" below.
+
 ---
 
 ## Component map

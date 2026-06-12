@@ -15,9 +15,12 @@ node_modules/
 dist/
 .env
 .env.*
+!.env.example
 
-# Python service
-service/.venv/
-service/**/__pycache__/
-*.pyc
-service/.pytest_cache/
+# Dashboard build/test artifacts
+dashboard/dist/
+dashboard/test-results/
+dashboard/playwright-report/
+
+# Agent secrets (never commit)
+agent/.env

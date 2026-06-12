@@ -1,4 +1,5 @@
 import Fastify, { FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
 import type { InMemoryStore } from "./store.js";
 import type { HermesClient } from "./hermes.js";
 import { executeTool } from "./tools.js";
@@ -12,6 +13,7 @@ export interface Deps {
 
 export function buildApp(deps: Deps): FastifyInstance {
   const app = Fastify({ logger: false });
+  app.register(cors, { origin: true });
   const { store } = deps;
 
   app.get("/health", async () => ({ status: "ok" }));

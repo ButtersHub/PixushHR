@@ -1058,9 +1058,168 @@ Expected: the slice is live on AWS — `/execute` works against the public engin
 
 ---
 
+## Phase 5 — End-to-end verification (controller runs these)
+
+> These prove the whole loop works without needing real Hermes/model-auth, by using a **stub
+> Hermes that performs the tool callback** (simulating the skill → `/tools/execute`). The
+> controller runs both before declaring the slice done.
+
+### Task 13: Code-level e2e (engine full loop)
+
+**Files:**
+- Create: `engine/src/stubHermes.ts`, `engine/tests/e2e.test.ts`
+- Modify: `engine/src/server.ts` (add `HERMES_MODE=stub`)
+
+- [ ] **Step 1: Create `engine/src/stubHermes.ts`**
+
+```ts
+import type { HermesClient, ChatMessage } from "./hermes.js";
+
+// Simulates the agent deciding to call the hris.upsert_employee tool via the engine skill
+// (HTTP callback to /tools/execute), then returning a warm reply. Used for e2e without real Hermes.
+export class StubHermes implements HermesClient {
+  constructor(private engineUrl: string) {}
+  async chat(messages: ChatMessage[]): Promise<string> {
+    const task = messages.find((m) => m.role === "user")?.content ?? "";
+    await fetch(`${this.engineUrl}/tools/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "hris.upsert_employee",
+        args: { tenant: "papaya", id: "e1", name: "Maya Cohen", role: "Engineer", startDate: "2026-07-01" },
+      }),
+    });
+    return `Hi Maya, welcome to Papaya! I've set up your record. (task: ${task.slice(0, 30)})`;
+  }
+}
+```
+
+- [ ] **Step 2: Write the e2e test** — `engine/tests/e2e.test.ts`
+
+```ts
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { buildApp } from "../src/app.js";
+import { InMemoryStore } from "../src/store.js";
+import { StubHermes } from "../src/stubHermes.js";
+import type { FastifyInstance } from "fastify";
+
+const PORT = 3999;
+
+describe("e2e: engine full loop (execute -> tool callback -> audit)", () => {
+  let app: FastifyInstance;
+  beforeAll(async () => {
+    app = buildApp({ store: new InMemoryStore(), hermes: new StubHermes(`http://127.0.0.1:${PORT}`) });
+    await app.listen({ port: PORT, host: "127.0.0.1" });
+  });
+  afterAll(async () => { await app.close(); });
+
+  it("onboards via /execute and records the tool call in the audit", async () => {
+    const exec = await fetch(`http://127.0.0.1:${PORT}/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task: "Onboard Maya Cohen", context: { tenant: "papaya" } }),
+    });
+    const body = await exec.json();
+    expect(body.response).toContain("Maya");
+
+    const audit = await (await fetch(`http://127.0.0.1:${PORT}/audit?tenant=papaya`)).json();
+    expect(audit.some((e: any) => e.capability === "hris.upsert_employee")).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 3: Add stub mode to `engine/src/server.ts`** — replace the hermes construction with:
+
+```ts
+import { StubHermes } from "./stubHermes.js";
+// ...
+const hermes =
+  process.env.HERMES_MODE === "stub"
+    ? new StubHermes(`http://127.0.0.1:${port}`)
+    : new HttpHermesClient(hermesUrl, hermesKey);
+```
+
+- [ ] **Step 4: Run + commit**
+
+Run: `cd engine && npm test -- e2e` → PASS.
+```bash
+git add engine/src/stubHermes.ts engine/tests/e2e.test.ts engine/src/server.ts
+git commit -m "test(engine): code-level e2e (execute -> tool callback -> audit) + stub mode"
+```
+
+### Task 14: Playwright e2e via the dashboard
+
+**Files:**
+- Create: `dashboard/playwright.config.ts`, `dashboard/e2e/onboarding.spec.ts`
+- Modify: `dashboard/package.json` (add playwright dep + script)
+
+- [ ] **Step 1: Install Playwright**
+
+Run:
+
+```bash
+cd dashboard && npm install -D @playwright/test && npx playwright install chromium
+```
+
+- [ ] **Step 2: Create `dashboard/playwright.config.ts`** (starts stub-engine + dashboard dev)
+
+```ts
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./e2e",
+  use: { baseURL: "http://localhost:5173" },
+  webServer: [
+    {
+      command: "npm --prefix ../engine run start",
+      env: { PORT: "3000", HERMES_MODE: "stub" },
+      url: "http://localhost:3000/health",
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: "npm run dev -- --port 5173",
+      env: { VITE_ENGINE_URL: "http://localhost:3000" },
+      url: "http://localhost:5173",
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
+});
+```
+
+- [ ] **Step 3: Create `dashboard/e2e/onboarding.spec.ts`**
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("onboarding flow renders response + audit in the UI", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /trigger/i }).click();
+  await expect(page.locator("pre")).toContainText("Maya", { timeout: 15000 });
+  await expect(page.getByText("hris.upsert_employee")).toBeVisible();
+});
+```
+
+- [ ] **Step 4: Add a script to `dashboard/package.json`**
+
+Add to `"scripts"`: `"e2e": "playwright test"`.
+
+- [ ] **Step 5: Run + commit**
+
+Run: `cd dashboard && npm run e2e` → PASS (Playwright starts the stub-engine + dashboard, drives the UI).
+```bash
+git add dashboard/playwright.config.ts dashboard/e2e/onboarding.spec.ts dashboard/package.json dashboard/package-lock.json
+git commit -m "test(dashboard): playwright e2e through the UI (stub-engine)"
+```
+
+(Add `dashboard/test-results/`, `dashboard/playwright-report/`, and `**/node_modules/` to `.gitignore`.)
+
+---
+
 ## Done criteria
 
-- `cd engine && npm test` green (health, store, tools, toolsExecute, orchestrator).
+- `cd engine && npm test` green (health, store, tools, toolsExecute, orchestrator, **e2e**).
+- **Code e2e (Task 13) passes** — `/execute` drives a tool callback that lands in the audit.
+- **Playwright e2e (Task 14) passes** — the dashboard trigger shows the response + the audit entry.
 - `docker compose up` brings up engine + agent + dashboard.
 - Text path: `POST /execute` → warm response + an `hris.upsert_employee` audit entry (agent → skill → engine tool).
 - WhatsApp path: inbound message → agent reply + audit entry.

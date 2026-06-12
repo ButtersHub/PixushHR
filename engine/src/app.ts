@@ -2,6 +2,8 @@ import Fastify, { FastifyInstance } from "fastify";
 import type { InMemoryStore } from "./store.js";
 import type { HermesClient } from "./hermes.js";
 import { executeTool } from "./tools.js";
+import { runExecute } from "./orchestrator.js";
+import type { ExecuteRequest, ExecuteResponse } from "./models.js";
 
 export interface Deps {
   store: InMemoryStore;
@@ -27,6 +29,11 @@ export function buildApp(deps: Deps): FastifyInstance {
   app.get<{ Querystring: { tenant?: string } }>("/audit", async (req) => {
     const tenant = req.query.tenant ?? "papaya";
     return store.getAudit(tenant);
+  });
+
+  app.post<{ Body: ExecuteRequest }>("/execute", async (req): Promise<ExecuteResponse> => {
+    const reply = await runExecute(req.body, deps.hermes);
+    return { response: reply.response, structured: reply as unknown as Record<string, unknown> };
   });
 
   return app;

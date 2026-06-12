@@ -15,9 +15,3 @@ node_modules/
 dist/
 .env
 .env.*
-
-# Python service
-service/.venv/
-service/**/__pycache__/
-*.pyc
-service/.pytest_cache/

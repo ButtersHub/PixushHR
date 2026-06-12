@@ -31,9 +31,14 @@ export function buildApp(deps: Deps): FastifyInstance {
     return store.getAudit(tenant);
   });
 
-  app.post<{ Body: ExecuteRequest }>("/execute", async (req): Promise<ExecuteResponse> => {
-    const reply = await runExecute(req.body, deps.hermes);
-    return { response: reply.response, structured: reply as unknown as Record<string, unknown> };
+  app.post<{ Body: ExecuteRequest }>("/execute", async (req, reply) => {
+    try {
+      const agentReply = await runExecute(req.body, deps.hermes);
+      return { response: agentReply.response, structured: agentReply as unknown as Record<string, unknown> };
+    } catch (err) {
+      reply.code(502);
+      return { error: `agent error: ${(err as Error).message}` };
+    }
   });
 
   return app;

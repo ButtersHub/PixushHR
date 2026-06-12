@@ -18,6 +18,6 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient): Pro
     tenant,
     user: { id: "unknown", name: "Employee", role: "employee", channel: "sensei" },
     response: text,
-    actions: [],
+    actions: [], // populated when we parse Hermes tool-call results (later phase)
   };
 }

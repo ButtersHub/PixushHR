@@ -400,3 +400,70 @@ supersede this, but this captures intent as we go.
     later channel events**, NOT a long-lived open connection within one whole-workflow call. The
     agent reconstructs context from the stores by identity (stateless-per-call, items 22 & 26).
     Made explicit in the spec.
+
+## Two-service split & tooling (2026-06-11, later session)
+
+42. **Two-service split — REVERSES embedded Hermes (items 31/33 "embedded library").** The system
+    is **two services** communicating over HTTP: an **Engine** and an **Agent service** (Hermes).
+    The **Agent-Infra Port becomes a real network boundary** (swap Hermes→OpenClaw behind the same
+    HTTP contract). Rationale: clarity/observability of what's happening; the local HTTP hop is
+    negligible next to LLM latency (the earlier "avoid the hop" objection was overweighted).
+
+43. **Languages (re-splits item 31).** **Engine = TypeScript/Node**; **Agent service = Python**
+    (wraps Hermes). Consequence: **Plan 1's Python skeleton is redone in TS**; workflow/envelope
+    types go back to **TS interfaces** (Pydantic only inside the Python agent service if needed).
+
+44. **Tool ownership — split by nature, not "engine proxies everything."**
+    - **Hermes-native (no callback):** generic, non-sensitive capabilities Hermes ships (e.g. web
+      search). Use them (Hermes-first, item 21).
+    - **Engine-executed (callback):** anything touching our domain state/stores or requiring hard
+      guardrails (HRIS, ATS, audit, idempotency).
+    - **Channels:** **do NOT build Slack/WhatsApp/Teams adapters** — use Hermes' tested native
+      channel integrations. The **agent decides + drafts + sends** via Hermes native channels.
+
+45. **Gate enforcement (refines item 27).** Because Hermes owns delivery, the confidentiality gate
+    is enforced at the **Hermes send-hook**, which calls back to the **Engine `/gate/scope`**
+    (engine owns the **policy + audit**; Hermes delivers the scoped content). Restrict the agent to
+    the hooked channel tools so there is no bypass path. Depends on Hermes having a tool-intercept/
+    pre-send hook that can mutate a send + call out (confirm in the Hermes review). Fallback if not:
+    engine scopes → agent sends the sealed text → hook verifies (slightly weaker, still adapter-free).
+
+46. **Structural gate mechanism (the "how" behind 27 — decided).** The HARD guarantee is **not**
+    prose-scrubbing. It is **structural absence**: restricted-audience artifacts are produced by
+    **capability tools whose schemas only accept audience-allowed fields** — e.g.
+    `calendar.create_invite(date, location, attendees)` has **no `reason` parameter**; the
+    termination `reason` flows only to authorized-recipient tools (`generate_termination_letter` →
+    employee/HR). Plus **input least-privilege** (scope tool-result data to the purpose). The
+    **send-hook is defense-in-depth only** (rule-based, optionally LLM), never the hard guarantee.
+
+## Hermes review findings (task #9) + lean-slice decisions
+
+47. **Engine↔Agent transport (decided, precise).** Hermes runs as **`hermes gateway`**, which exposes
+    an **OpenAI-*compatible* HTTP API** (a wire-format convention — *not* a dependency on OpenAI the
+    company) at `http://<agent>:8642`. The engine calls **`POST /v1/chat/completions`** (stateless,
+    full history per request — fits stateless-per-call) with bearer auth `API_SERVER_KEY`; `/v1/runs`
+    gives SSE tool-call progress (for the dashboard trace). The **model Hermes reasons with** is a
+    *separate* internal config (that's where the real OpenAI-with-auth, item 35/#4, lives).
+
+48. **Tool-callback = Hermes skill + HTTP/CLI (decided; no MCP).** Hermes configures tools
+    server-side, not per-request; its native extension is "skills or MCP". Per the user's no-MCP
+    preference, our domain tools are exposed via a **Hermes skill** that calls back to the engine's
+    **`POST /tools/execute`** over HTTP. The **engine stays the domain-tool executor** (stores +
+    audit). (MCP remains a fallback if skills get awkward.)
+
+49. **Channels are reply-only in Hermes (decided constraint).** Hermes' native channels (incl.
+    WhatsApp) **do not support proactive outbound** ("don't automate outbound messaging to people who
+    haven't messaged first"). So for the demo, **WhatsApp is inbound-triggered: the new hire messages
+    the bot first**, and the agent **replies** with the welcome and drives onboarding (calling the
+    engine skill for tools + audit). Proactive outbound + the audience-scoping send-gate (items 44–46)
+    are deferred; real proactive nudges are a later/Teams concern. WhatsApp setup: `hermes whatsapp`
+    wizard, **Node.js v18+**, QR-link a phone, `WHATSAPP_ENABLED=true WHATSAPP_MODE=bot`, `hermes gateway`.
+
+50. **Lean E2E slice scope (decided).** Thinnest path through all main components, manually testable
+    on AWS: **Engine (TS)** [`/execute`, `/tools/execute`, `/audit`, in-memory store + audit, Hermes
+    client] + **Agent service (Hermes)** [gateway: API server on, WhatsApp bot, memory off, minimal
+    `SOUL.md`, engine-callback skill] + **Dashboard (TS/React)** [trigger + response + audit] +
+    **docker-compose** → AWS box. One flow: onboarding via (a) Sensei `/execute` text path and
+    (b) inbound WhatsApp. Deferred: DynamoDB/S3 (in-memory only), the send-gate, offboarding,
+    encryption, real model-auth + AWS specifics (wired at deploy). Supersedes the breadth-first
+    7-plan sequence for now; widen afterward.

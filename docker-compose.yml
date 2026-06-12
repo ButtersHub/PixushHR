@@ -1,6 +1,8 @@
 services:
   engine:
     build: ./engine
+    env_file:
+      - ./.env            # Langfuse keys (git-ignored); no-op if absent
     environment:
       PORT: "3000"
       HERMES_URL: "http://agent:8642"

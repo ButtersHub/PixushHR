@@ -1,3 +1,6 @@
+// Tracing MUST be imported first so the OTel SDK is started before any app code runs.
+import { flushTracing } from "./tracing.js";
+
 import { buildApp } from "./app.js";
 import { InMemoryStore } from "./store.js";
 import { HttpHermesClient } from "./hermes.js";
@@ -16,6 +19,15 @@ const app = buildApp({
   store: new InMemoryStore(),
   hermes,
 });
+
+async function shutdown(signal: string): Promise<void> {
+  console.log(`${signal} received — flushing traces and shutting down`);
+  await flushTracing();
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
 
 app.listen({ port, host: "0.0.0.0" }).then(() => {
   console.log(`engine listening on :${port}, hermes at ${hermesUrl}`);

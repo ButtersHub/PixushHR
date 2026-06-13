@@ -47,15 +47,18 @@ docker-compose.yml + docker-compose.stub.yml
 reference/   third-party clones (sensei, hermes-agent, langfuse-skills) — gitignored
 ```
 
-## Deployment status — AWS EC2 (IN PROGRESS)
+## Deployment status — AWS EC2 — LIVE ✅ (verified end-to-end with real Hermes)
 - **Instance:** EC2 t3.medium, Ubuntu, **public IP `18.215.146.5`**. Security group opens 22, 3000, 8080.
 - **Containers (all Up):** engine `:3000`, agent(Hermes) `:8642`, dashboard `:8080`.
 - **Config on the box** (git-ignored `.env`, NOT committed): `VITE_ENGINE_URL=http://18.215.146.5:3000`
   + Langfuse keys; `agent/.env` from the example (API_SERVER_KEY matches engine's HERMES_API_KEY).
-- **RESUME HERE (next steps):**
-  1. `docker compose exec agent bash -lc 'hermes model'` → OpenAI Codex device login → `docker compose restart agent`. (Persists in the `hermes-data` volume.)
-  2. Verify: `curl -s -X POST http://18.215.146.5:3000/execute -H 'Content-Type: application/json' -d '{"task":"Onboard Maya Cohen (id e1, Engineer, start 2026-07-01)","context":{"tenant":"papaya"}}'` then `curl .../audit?tenant=papaya`. Open dashboard `http://18.215.146.5:8080`.
-  3. Point Sensei/Agentalent at `http://18.215.146.5:3000/execute` (health `/health`).
+- **Done:** Hermes model configured (OpenAI Codex, persisted in `hermes-data` volume); `/execute`
+  + `/audit` verified working on the public endpoint; Langfuse keys rotated (after rotating, the
+  engine was recreated via `docker compose up -d engine` to load the new keys).
+- **Remaining:** point **Sensei/Agentalent** at `http://18.215.146.5:3000/execute` (health
+  `/health`); open the dashboard at `http://18.215.146.5:8080`.
+- **Ops:** update via `git pull && docker compose up -d --build` (re-set `VITE_ENGINE_URL` if the
+  IP changes — it's baked into the dashboard at build time).
 
 ## Most load-bearing decisions (full list: requirements/decisions.md)
 Response-only scoring (#4) · Model B full agent (#5) · output envelope (#6) · four-storage model

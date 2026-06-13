@@ -13,29 +13,19 @@ action is the one-time Hermes model login, then verify, then point Sensei at the
   **Lean-slice plan:** `docs/superpowers/plans/2026-06-11-lean-e2e-slice.md`. **Deploy guide:** `docs/DEPLOY.md`.
 
 ## ▶ NEXT SESSION — START HERE
-**Phase A (A1–A9) is BUILT** on branch `phase-a-onboarding` (plan:
-`docs/superpowers/plans/2026-06-13-phaseA-impl.md`): one `/execute` now runs the full onboarding
-sequence (extract contract → ask hiring manager → upsert HRIS → add to Teams → schedule first day →
-fetch branding → warm welcome) across mock integrations over synthetic data, surfaced in the Live
-Run tool-call trace, the Messages screen, and the Audit screen. 38 engine tests + dashboard
-Playwright e2e green; typecheck + build clean.
+**Phase A (A1–A10) is BUILT** on branch `phase-a-onboarding` (plan:
+`docs/superpowers/plans/2026-06-13-phaseA-impl.md`): full onboarding sequence + configurable
+integrations registry + workflow editor. 63 engine tests + 3 dashboard Playwright e2e green;
+typecheck + build clean.
 
-**Next work, in order:**
-1. **A10 — configurable integrations & workflow editor** (the heavier "configure integrations and
-   their actions" half): integration registry keyed by role-port (`installed`/`enabled`/`mode`/
-   `config`), tool registry derives from it, `GET/POST /integrations…`, Catalog/Installed config UI,
-   visual Trigger·Action·Condition workflow editor over the typed `WorkflowDefinition`. See
-   `docs/superpowers/plans/2026-06-13-phaseA-onboarding.md` (A10 section) — write its bite-sized plan,
-   then build subagent-driven.
-2. **Phase B** — offboarding workflow + the structural confidentiality send-gate + escalation
-   (`docs/superpowers/plans/2026-06-13-widening-roadmap.md`).
+**Next work:**
+1. **Phase B** — offboarding workflow + the structural confidentiality send-gate + escalation
+   execution (`docs/superpowers/plans/2026-06-13-widening-roadmap.md`).
 
-The tool registry already models integrations as **role-ports** (`ToolDef.integration`) so A10's
-config UI layers on without a rewrite. TDD → verify → merge per phase. **Remaining Phase A
-verification:** run an onboarding `/execute` against the deployed box `http://18.215.146.5:3000`
-with real Hermes (`docker compose up -d --build` + the one-time Hermes model login) and confirm a
-multi-tool Langfuse trace + populated Messages/Audit — the automated suites already cover the
-code-level e2e via stub Hermes.
+**Remaining deferrals (unchanged, none blocking the demo):** real prod adapters, DynamoDB/S3,
+Users/Synthetic-data screens, real-Hermes deployed verification (run `/execute` against
+`http://18.215.146.5:3000` with real Hermes after `docker compose up -d --build` + one-time
+Hermes model login; confirm multi-tool Langfuse trace + populated Messages/Audit).
 
 ## What's built & working
 - **`engine/`** (TypeScript/Fastify): `POST /execute` (Sensei contract → calls Hermes → returns
@@ -45,20 +35,27 @@ code-level e2e via stub Hermes.
   team memberships, audit). **Tool registry** (`ToolDef` keyed by role-port `integration`):
   `hris.upsert_employee`, `ats.get_contract`, `hiring_manager.ask`, `teams.add_member`,
   `calendar.create_invite` (logistics-only, no `reason` — structural confidentiality seed),
-  `content.get_branding`, `channel.send_message` — each zod-validated → store → audit. Typed
-  **onboarding `WorkflowDefinition`** + **NL playbook serializer** the orchestrator injects so the
-  agent follows the steps and calls one tool per step. Synthetic **fixtures** seeded at startup
-  (Maya Cohen's signed contract, hiring manager, branding). **Langfuse tracing** (env-gated, OTel
-  SDK). 38 tests green (incl. code-e2e of the full sequence via stub Hermes).
+  `content.get_branding`, `channel.send_message` — each zod-validated → store → audit. **Integration
+  registry** keyed by role-port (`installed`/`enabled`/`mode`/`config`): `GET/POST /integrations`
+  catalog + per-connector install/uninstall/enable/config/`:id/data`; per-connector mock/prod adapter
+  with `failNext` injection; **tool gating** — only installed+enabled role-ports' tools reach the
+  agent (`availableTools`/`gateToolCall`). **Workflow node-graph** `WorkflowDefinition` stored and
+  served via `GET/PUT /workflows/:id`; `GET /capabilities` returns the full tool catalog. The
+  orchestrator builds the playbook from the stored workflow + available tools each run. Typed
+  **onboarding `WorkflowDefinition`** + **NL playbook serializer**. Synthetic **fixtures** seeded at
+  startup (Maya Cohen's signed contract, hiring manager, branding). **Langfuse tracing** (env-gated,
+  OTel SDK). 63 tests green (incl. code-e2e of the full sequence via stub Hermes).
 - **`agent/`** (Hermes `gateway` in Docker, Python): OpenAI-compatible API the engine calls; model
   = **gpt-5.5 via OpenAI Codex device-auth** (the "OpenAI with auth, not API key" path). Reaches
   our domain tools via the **`hris-tool` skill** that HTTP-calls the engine (NO MCP, per decision).
 - **`dashboard/`** (React/Vite/TS): built on a **Claude-designed design system vendored at
   `dashboard/src/ui/`** (Tailwind + CSS-var tokens + lucide). App shell (top bar + dark nav) +
-  **Live Run** screen (trigger→response, **tool-call trace** via `TraceRow`, audit), **Messages**
-  screen (`MessageBubble`, warm comms), **Audit** screen (filterable `Table`); Configure screens
-  (users/synthetic-data/integrations/workflow-editor) are still placeholders (Integrations +
-  Workflow editor land in A10). Playwright e2e asserts the multi-tool run. Guidelines:
+  **Live Run** screen (trigger→response, **tool-call trace** via `TraceRow` with brand icons, audit),
+  **Messages** screen (`MessageBubble`, warm comms, brand icons), **Audit** screen (filterable
+  `Table`, brand icons). **Integrations** screen: Catalog grouped by role-port with brand connector
+  logos + Installed config panel (General/Mock/Prod/Data/Tools sub-tabs). **Workflow editor** screen:
+  visual node-graph canvas (`data-testid="workflow-canvas"`) + inspector with binding pills + save.
+  Playwright e2e (3 specs) asserts multi-tool run, catalog connectors, and workflow graph. Guidelines:
   `docs/design/component-guidelines.md`.
 - **Verified flow:** `/execute` → agent follows the injected playbook → calls each skill tool →
   engine validates/stores/audits → multi-tool audit + warm message. Confirmed via the engine

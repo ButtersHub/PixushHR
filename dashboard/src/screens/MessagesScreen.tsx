@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MessageSquare } from 'lucide-react';
-import { Card, CardHeader, CardBody, MessageBubble, EmptyState, LoadingState, ErrorState } from '../ui/index';
+import { Card, CardHeader, CardBody, MessageBubble, EmptyState, LoadingState, ErrorState, ConnectorIcon } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
 
@@ -81,6 +81,7 @@ export function MessagesScreen() {
                   from={m.from}
                   recipient={m.to}
                   channel={m.channel}
+                  channelIcon={<ConnectorIcon name={m.channel} kind="channel" size={11} />}
                   timestamp={m.ts}
                   content={m.body}
                 />

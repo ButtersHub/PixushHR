@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileText } from 'lucide-react';
-import { Card, CardHeader, Table, TableFilter, EmptyState, LoadingState, ErrorState } from '../ui/index';
+import { Card, CardHeader, Table, TableFilter, EmptyState, LoadingState, ErrorState, ConnectorIcon } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
 
@@ -12,6 +12,11 @@ interface AuditEntry {
 }
 
 const COLUMNS = [
+  {
+    key: 'capability',
+    label: 'System',
+    render: (v: unknown) => <ConnectorIcon name={String(v)} kind="capability" size={16} />,
+  },
   { key: 'capability', label: 'Capability', mono: true, sortable: true },
   { key: 'target', label: 'Target' },
   { key: 'summary', label: 'Summary', muted: true },

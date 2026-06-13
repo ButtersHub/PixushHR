@@ -12,6 +12,7 @@ import {
   ErrorState,
   EmptyState,
   StreamingState,
+  ConnectorIcon,
 } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
@@ -170,6 +171,7 @@ export function LiveRunScreen({ autoTrigger = false }: LiveRunScreenProps) {
                   status="success"
                   label={e.capability}
                   value={e.summary}
+                  icon={<ConnectorIcon name={e.capability} kind="capability" size={16} />}
                 />
               ))}
             </div>

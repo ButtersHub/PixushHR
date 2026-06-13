@@ -5,6 +5,7 @@ export interface TraceRowProps {
   error?: string;
   duration?: number;
   depth?: number;
+  icon?: React.ReactNode;
   className?: string;
 }
 
@@ -12,6 +13,7 @@ export interface MessageBubbleProps {
   from?: 'agent' | 'employee';
   recipient?: string;
   channel?: 'email' | 'teams' | 'slack';
+  channelIcon?: React.ReactNode;
   timestamp?: string;
   content: string;
   /** True if the message was audience-scoped (some fields omitted) */

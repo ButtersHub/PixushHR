@@ -55,6 +55,23 @@ describe("/execute", () => {
   });
 });
 
+describe("/execute playbook injection", () => {
+  it("injects the onboarding playbook + tool catalog into the Hermes messages", async () => {
+    const hermes = new FakeHermes("Welcome Maya!");
+    const app = buildApp({ store: new InMemoryStore(), hermes });
+    await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: { task: "Onboard Maya Cohen", context: { tenant: "papaya" } },
+    });
+    const joined = hermes.lastMessages.map((m) => m.content).join("\n");
+    expect(joined).toMatch(/ONBOARDING PLAYBOOK/);
+    expect(joined).toContain("ats.get_contract");
+    expect(joined).toContain("channel.send_message");
+    expect(joined).toContain("Onboard Maya Cohen");
+  });
+});
+
 describe("runExecute (no-op tracing path)", () => {
   it("returns content from Hermes and correct shape when tracing is DISABLED (no LANGFUSE env)", async () => {
     // LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY are absent in the test environment,

@@ -7,6 +7,7 @@ import {
   CardBody,
   Textarea,
   Table,
+  TraceRow,
   LoadingState,
   ErrorState,
   EmptyState,
@@ -153,6 +154,28 @@ export function LiveRunScreen({ autoTrigger = false }: LiveRunScreenProps) {
           )}
         </CardBody>
       </Card>
+
+      {/* Tool-calls trace card */}
+      {runState === 'done' && audit.length > 0 && (
+        <Card>
+          <CardHeader
+            title="Tool calls"
+            subtitle={`${audit.length} ${audit.length === 1 ? 'step' : 'steps'} across systems`}
+          />
+          <CardBody>
+            <div role="list" data-testid="trace-list">
+              {audit.map((e, i) => (
+                <TraceRow
+                  key={i}
+                  status="success"
+                  label={e.capability}
+                  value={e.summary}
+                />
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Audit card */}
       <Card padding={false}>

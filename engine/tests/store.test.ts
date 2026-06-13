@@ -24,6 +24,32 @@ describe("InMemoryStore", () => {
   });
 });
 
+describe("store — A10 connector state + workflows", () => {
+  it("stores and reads connector state tenant-scoped", () => {
+    const s = new InMemoryStore();
+    s.setConnectorState("papaya", "slack", { installed: true, enabled: true, mode: "mock", config: { mock: {}, prod: {} } });
+    expect(s.getConnectorState("papaya", "slack")?.installed).toBe(true);
+    expect(s.getConnectorState("acme", "slack")).toBeUndefined();
+  });
+
+  it("stores and reads a workflow definition", () => {
+    const s = new InMemoryStore();
+    const def = { id: "wf1", name: "Test", version: 1, trigger: { type: "manual" }, root: "n1", nodes: {} };
+    s.setWorkflow("papaya", def as any);
+    expect(s.getWorkflow("papaya", "wf1")?.name).toBe("Test");
+    expect(s.listWorkflows("papaya").map((w) => w.id)).toEqual(["wf1"]);
+  });
+
+  it("reset clears connector state and workflows", () => {
+    const s = new InMemoryStore();
+    s.setConnectorState("papaya", "slack", { installed: true, enabled: true, mode: "mock", config: { mock: {}, prod: {} } });
+    s.setWorkflow("papaya", { id: "wf1", name: "T", version: 1, trigger: { type: "manual" }, root: "n1", nodes: {} } as any);
+    s.reset();
+    expect(s.getConnectorState("papaya", "slack")).toBeUndefined();
+    expect(s.listWorkflows("papaya")).toHaveLength(0);
+  });
+});
+
 describe("store — phase A domain", () => {
   it("stores and reads a contract", () => {
     const s = new InMemoryStore();

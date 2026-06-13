@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { ConnectorState } from "./integrations.js";
+import type { WorkflowDefinition } from "./workflows/types.js";
 
 export interface Employee {
   id: string;
@@ -83,6 +85,8 @@ export class InMemoryStore {
   private invites: CalendarInvite[] = [];
   private memberships: TeamMembership[] = [];
   private auditLog: AuditEntry[] = [];
+  private connectorStates = new Map<string, ConnectorState>();
+  private workflows = new Map<string, WorkflowDefinition>();
 
   private key(tenant: string, kind: string, id: string): string {
     return `${tenant}#${kind}#${id}`;
@@ -170,6 +174,28 @@ export class InMemoryStore {
     return this.auditLog.filter((e) => e.tenant === tenant);
   }
 
+  getConnectorState(tenant: string, id: string): ConnectorState | undefined {
+    return this.connectorStates.get(this.key(tenant, "connector", id));
+  }
+
+  setConnectorState(tenant: string, id: string, state: ConnectorState): void {
+    this.connectorStates.set(this.key(tenant, "connector", id), state);
+  }
+
+  getWorkflow(tenant: string, id: string): WorkflowDefinition | undefined {
+    return this.workflows.get(this.key(tenant, "workflow", id));
+  }
+
+  setWorkflow(tenant: string, def: WorkflowDefinition): void {
+    this.workflows.set(this.key(tenant, "workflow", def.id), def);
+  }
+
+  listWorkflows(tenant: string): WorkflowDefinition[] {
+    return [...this.workflows.entries()]
+      .filter(([k]) => k.startsWith(`${tenant}#workflow#`))
+      .map(([, v]) => v);
+  }
+
   reset(): void {
     this.employees.clear();
     this.contracts.clear();
@@ -180,5 +206,7 @@ export class InMemoryStore {
     this.invites = [];
     this.memberships = [];
     this.auditLog = [];
+    this.connectorStates.clear();
+    this.workflows.clear();
   }
 }

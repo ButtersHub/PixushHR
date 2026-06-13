@@ -79,3 +79,37 @@ verify → commit; merge the phase at the end. Verify finally against the deploy
 
 **Deferred to Phase B:** the manager-else-peer-else-escalate condition, offboarding, the
 confidentiality gate. Keep Phase A linear + happy-path.
+
+---
+
+## A10 — Configurable integrations & workflow editor (the "configure integrations and their actions" part)
+
+> This is the **configurable** half (decisions #13–18, #20). A1–A9 above use hardcoded mock tools;
+> this makes integrations *installable/enable-able with per-integration config*, and workflows
+> *editable*. It's the heavier half — **build it after A1–A9 are running** (so there's something to
+> configure), and it can be split into its own sub-phase. Model integrations as a registry in A1–A2
+> so this layers on cleanly.
+
+### Backend (engine)
+- **Integration registry** keyed by role-port (HRIS←Shapes, ATS←Comeet, Channels←{Teams,Slack,Email},
+  TaskBoard←Trello, Calendar, Content): each entry has `installed`, `enabled`, `mode: mock|prod`, and
+  `config` (mock: fixture set / latency / error-injection / seed; prod: base URL / auth-ref / IDs).
+- The **tool registry derives from the registry** — only tools of *installed+enabled* integrations are
+  exposed to the agent; the tool's adapter is chosen by `mode` (decisions #13, #44). So toggling an
+  integration in the UI actually gates/changes behavior.
+- API: `GET /integrations` (catalog + installed state) · `POST /integrations/:id/install|enable|config`.
+  **Error-injection** in mock config → drives the escalation demo (Phase B).
+
+### Dashboard (Configure screens, on the design system)
+- **Integrations area** (replace placeholder): two tabs — **Catalog** (connectors grouped by type +
+  install state, using the `ConnectorCard` component) and **Installed** (per-connector tabs: General /
+  **Mock config** / **Prod config** (separated) / Data / Tools). Drives the `/integrations` API.
+- **Workflow editor** (replace placeholder): visual **Trigger·Action·Condition** flow that is a view
+  of the typed `WorkflowDefinition` (A3) — pick a trigger, add Action steps (each = a capability from
+  an installed integration), edit field **bindings** (literal / data-ref / agent) via the inspector.
+  Uses the vendored `FlowNode` / `BindingPill` components. Start **view+edit** of the seeded
+  onboarding workflow; create-from-scratch later (decision #20).
+
+### Verify
+- Install/enable an integration in the UI → its tools appear to the agent; flip mock/prod → adapter
+  changes. Edit the onboarding workflow's actions in the editor → the run reflects the change.

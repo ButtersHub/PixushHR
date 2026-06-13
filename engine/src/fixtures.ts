@@ -1,4 +1,6 @@
 import type { InMemoryStore } from "./store.js";
+import { CONNECTORS, defaultState } from "./integrations.js";
+import { onboardingWorkflow } from "./workflows/onboarding.js";
 
 // Synthetic onboarding fixtures. Loaded at startup and on POST /reset.
 export function seedFixtures(store: InMemoryStore, tenant = "papaya"): void {
@@ -30,4 +32,10 @@ export function seedFixtures(store: InMemoryStore, tenant = "papaya"): void {
     cultureVideoUrl: "https://papaya.example/culture",
     welcomeNote: "We're genuinely glad you're joining us.",
   });
+
+  for (const def of CONNECTORS) {
+    store.setConnectorState(tenant, def.id, defaultState(def));
+  }
+  // store a deep copy so editor edits never mutate the module constant
+  store.setWorkflow(tenant, JSON.parse(JSON.stringify(onboardingWorkflow)));
 }

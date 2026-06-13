@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { InMemoryStore } from "../src/store.js";
 import { seedFixtures } from "../src/fixtures.js";
+import { CONNECTORS } from "../src/integrations.js";
 
 describe("seedFixtures", () => {
   it("seeds a signed contract, manager, department, and branding for papaya", () => {
@@ -19,5 +20,27 @@ describe("seedFixtures", () => {
     const s = new InMemoryStore();
     seedFixtures(s, "acme");
     expect(s.getContract("acme", "c1")?.name).toBe("Maya Cohen");
+  });
+});
+
+describe("seedFixtures — A10", () => {
+  it("seeds explicit connector state for every catalog connector", async () => {
+    const { InMemoryStore } = await import("../src/store.js");
+    const { seedFixtures } = await import("../src/fixtures.js");
+    const s = new InMemoryStore();
+    seedFixtures(s);
+    for (const c of CONNECTORS) {
+      expect(s.getConnectorState("papaya", c.id)).toBeTruthy();
+    }
+    expect(s.getConnectorState("papaya", "shapes")?.enabled).toBe(true);
+    expect(s.getConnectorState("papaya", "slack")?.installed).toBe(false);
+  });
+
+  it("seeds the onboarding workflow definition", async () => {
+    const { InMemoryStore } = await import("../src/store.js");
+    const { seedFixtures } = await import("../src/fixtures.js");
+    const s = new InMemoryStore();
+    seedFixtures(s);
+    expect(s.getWorkflow("papaya", "onboarding")?.root).toBeTruthy();
   });
 });

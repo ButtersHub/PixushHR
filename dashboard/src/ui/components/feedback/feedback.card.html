@@ -1,0 +1,61 @@
+<!-- @dsCard group="Components" viewport="700x260" name="Feedback States" subtitle="Empty, loading, error, streaming" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config = { corePlugins: { preflight: false } }</script>
+<script src="../../_ds_bundle.js"></script>
+<style>
+  body { margin: 0; padding: 14px 16px; background: var(--surface-app); font-family: var(--font-sans); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .cell { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; }
+  .label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-tertiary); padding: 8px 10px 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { EmptyState, LoadingState, ErrorState, StreamingState } = window.PixushHRDesignSystem_358ac3;
+
+const MsgIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+);
+
+function Demo() {
+  return (
+    <div className="grid">
+      <div className="cell">
+        <div className="label">Empty</div>
+        <EmptyState icon={<MsgIcon/>} title="No messages yet" description="Run a scenario to see agent communications here." />
+      </div>
+      <div className="cell">
+        <div className="label">Loading</div>
+        <LoadingState rows={4} />
+        <div style={{height:8}}/>
+      </div>
+      <div className="cell">
+        <div className="label">Error</div>
+        <ErrorState title="Couldn't reach Shapes" description="Check Integrations and try again." onRetry={()=>{}} />
+      </div>
+      <div className="cell">
+        <div className="label">Streaming</div>
+        <div style={{padding:'0 10px 10px'}}>
+          <StreamingState label="Agent is running…" step="hris.upsert_employee" />
+          <StreamingState label="Sending welcome email…" step="send_message → maya@papaya.io" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+</script>
+</body>
+</html>

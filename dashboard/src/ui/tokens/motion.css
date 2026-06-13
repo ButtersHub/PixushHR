@@ -1,0 +1,43 @@
+/* =========================================================
+   PixushHR — Motion Tokens
+   Papaya Global · Operations Console Design System
+   ========================================================= */
+
+:root {
+  /* ── Durations ───────────────────────────────────────────── */
+  --duration-instant:  50ms;    /* @kind other */
+  --duration-fast:     100ms;   /* @kind other */
+  --duration-normal:   150ms;   /* @kind other */
+  --duration-moderate: 200ms;   /* @kind other */
+  --duration-slow:     300ms;   /* @kind other */
+  --duration-slower:   400ms;   /* @kind other */
+  --duration-loading:  1200ms;  /* @kind other */
+
+  /* ── Easing ──────────────────────────────────────────────── */
+  --ease-standard:     cubic-bezier(0.4, 0, 0.2, 1);      /* @kind other */
+  --ease-in:           cubic-bezier(0.4, 0, 1, 1);        /* @kind other */
+  --ease-out:          cubic-bezier(0, 0, 0.2, 1);        /* @kind other */
+  --ease-spring:       cubic-bezier(0.34, 1.56, 0.64, 1); /* @kind other */
+
+  /* ── Shorthand transitions ───────────────────────────────── */
+  --transition-colors:     color var(--duration-fast) var(--ease-standard),
+                           background-color var(--duration-fast) var(--ease-standard),
+                           border-color var(--duration-fast) var(--ease-standard),
+                           fill var(--duration-fast) var(--ease-standard);
+  --transition-opacity:    opacity var(--duration-normal) var(--ease-standard);
+  --transition-transform:  transform var(--duration-normal) var(--ease-spring);
+  --transition-shadow:     box-shadow var(--duration-fast) var(--ease-standard);
+  --transition-all:        all var(--duration-normal) var(--ease-standard);
+}
+
+/* Respect reduced-motion: only instant and essential motion */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant:  0ms; /* @kind other */
+    --duration-fast:     0ms; /* @kind other */
+    --duration-normal:   0ms; /* @kind other */
+    --duration-moderate: 0ms; /* @kind other */
+    --duration-slow:     0ms; /* @kind other */
+    --duration-slower:   0ms; /* @kind other */
+  }
+}

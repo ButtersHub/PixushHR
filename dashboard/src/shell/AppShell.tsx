@@ -4,9 +4,9 @@ import { LeftNav } from './LeftNav';
 import type { Screen } from './LeftNav';
 import { LiveRunScreen } from '../screens/LiveRunScreen';
 import { MessagesScreen } from '../screens/MessagesScreen';
+import { AuditScreen } from '../screens/AuditScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
 import {
-  FileText,
   Users,
   Database,
   Plug,
@@ -37,13 +37,7 @@ export function AppShell() {
             <LiveRunScreen key={triggerKey} autoTrigger={triggerKey > 0} />
           )}
           {activeScreen === 'messages' && <MessagesScreen />}
-          {activeScreen === 'audit-log' && (
-            <PlaceholderScreen
-              icon={<FileText size={20} />}
-              title="Audit log"
-              description="Not implemented yet — coming in a later iteration."
-            />
-          )}
+          {activeScreen === 'audit-log' && <AuditScreen />}
           {activeScreen === 'users-roles' && (
             <PlaceholderScreen
               icon={<Users size={20} />}

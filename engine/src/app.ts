@@ -4,6 +4,7 @@ import type { InMemoryStore } from "./store.js";
 import type { HermesClient } from "./hermes.js";
 import { executeTool } from "./tools.js";
 import { runExecute } from "./orchestrator.js";
+import { gateToolCall } from "./integrations.js";
 import { seedFixtures } from "./fixtures.js";
 import type { ExecuteRequest, ExecuteResponse } from "./models.js";
 
@@ -21,7 +22,9 @@ export function buildApp(deps: Deps): FastifyInstance {
 
   app.post<{ Body: { name: string; args: unknown } }>("/tools/execute", async (req, reply) => {
     const { name, args } = req.body;
+    const tenant = ((args as { tenant?: string })?.tenant) ?? "papaya";
     try {
+      gateToolCall(store, tenant, name);
       return await executeTool(store, name, args);
     } catch (err) {
       reply.code(400);
@@ -47,7 +50,7 @@ export function buildApp(deps: Deps): FastifyInstance {
 
   app.post<{ Body: ExecuteRequest }>("/execute", async (req, reply) => {
     try {
-      const agentReply = await runExecute(req.body, deps.hermes);
+      const agentReply = await runExecute(req.body, deps.hermes, store);
       return { response: agentReply.response, structured: agentReply as unknown as Record<string, unknown> };
     } catch (err) {
       reply.code(502);

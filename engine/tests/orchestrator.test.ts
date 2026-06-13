@@ -77,7 +77,8 @@ describe("runExecute (no-op tracing path)", () => {
     // LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY are absent in the test environment,
     // so tracing falls through to the no-op path — this validates that behaviour.
     const hermes = new FakeHermes("Hello from Hermes!");
-    const reply = await runExecute({ task: "Onboard Test User", context: { tenant: "acme" } }, hermes);
+    const { InMemoryStore } = await import("../src/store.js");
+    const reply = await runExecute({ task: "Onboard Test User", context: { tenant: "acme" } }, hermes, new InMemoryStore());
     expect(reply.response).toBe("Hello from Hermes!");
     expect(reply.tenant).toBe("acme");
     expect(typeof reply.requestId).toBe("string");

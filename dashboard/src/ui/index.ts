@@ -15,3 +15,4 @@ export { EmptyState, LoadingState, ErrorState, StreamingState } from './componen
 // Domain
 export { FlowNode, BranchConnector, BindingPill } from './components/domain/FlowNode';
 export { TraceRow, MessageBubble, ConnectorCard } from './components/domain/TraceRow';
+export { ConnectorIcon } from './components/domain/ConnectorIcon';

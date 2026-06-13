@@ -7,10 +7,10 @@ import { MessagesScreen } from '../screens/MessagesScreen';
 import { AuditScreen } from '../screens/AuditScreen';
 import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
+import { WorkflowEditorScreen } from '../screens/WorkflowEditorScreen';
 import {
   Users,
   Database,
-  Workflow,
 } from 'lucide-react';
 
 export function AppShell() {
@@ -53,13 +53,7 @@ export function AppShell() {
             />
           )}
           {activeScreen === 'integrations' && <IntegrationsScreen />}
-          {activeScreen === 'workflow-editor' && (
-            <PlaceholderScreen
-              icon={<Workflow size={20} />}
-              title="Workflow editor"
-              description="Not implemented yet — coming in a later iteration."
-            />
-          )}
+          {activeScreen === 'workflow-editor' && <WorkflowEditorScreen />}
         </main>
       </div>
     </div>

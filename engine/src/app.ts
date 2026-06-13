@@ -4,6 +4,7 @@ import type { InMemoryStore } from "./store.js";
 import type { HermesClient } from "./hermes.js";
 import { executeTool } from "./tools.js";
 import { runExecute } from "./orchestrator.js";
+import { seedFixtures } from "./fixtures.js";
 import type { ExecuteRequest, ExecuteResponse } from "./models.js";
 
 export interface Deps {
@@ -31,6 +32,17 @@ export function buildApp(deps: Deps): FastifyInstance {
   app.get<{ Querystring: { tenant?: string } }>("/audit", async (req) => {
     const tenant = req.query.tenant ?? "papaya";
     return store.getAudit(tenant);
+  });
+
+  app.get<{ Querystring: { tenant?: string } }>("/messages", async (req) => {
+    const tenant = req.query.tenant ?? "papaya";
+    return store.getMessages(tenant);
+  });
+
+  app.post("/reset", async () => {
+    store.reset();
+    seedFixtures(store);
+    return { ok: true };
   });
 
   app.post<{ Body: ExecuteRequest }>("/execute", async (req, reply) => {

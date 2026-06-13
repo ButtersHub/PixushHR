@@ -174,6 +174,14 @@ export class InMemoryStore {
     return this.auditLog.filter((e) => e.tenant === tenant);
   }
 
+  listEmployees(tenant: string): Employee[] {
+    return [...this.employees.entries()].filter(([k]) => k.startsWith(`${tenant}#employee#`)).map(([, v]) => v);
+  }
+
+  listContracts(tenant: string): Contract[] {
+    return [...this.contracts.entries()].filter(([k]) => k.startsWith(`${tenant}#contract#`)).map(([, v]) => v);
+  }
+
   getConnectorState(tenant: string, id: string): ConnectorState | undefined {
     return this.connectorStates.get(this.key(tenant, "connector", id));
   }

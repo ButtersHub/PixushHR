@@ -8,7 +8,7 @@
  * <TraceRow status="running" label="Calling hris.upsert_employee" />
  * <TraceRow status="error" label="send_message" error="Shapes API timeout" />
  */
-export function TraceRow({ status = 'pending', label, value, error, duration, depth = 0, className = '' }) {
+export function TraceRow({ status = 'pending', label, value, error, duration, depth = 0, icon, className = '' }) {
   const icons = {
     pending: (
       <svg className="text-[--neutral-400]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -45,6 +45,7 @@ export function TraceRow({ status = 'pending', label, value, error, duration, de
       role="listitem"
     >
       <span className="mt-0.5 flex-shrink-0" aria-hidden="true">{icons[status]}</span>
+      {icon && <span className="mt-0.5 flex-shrink-0" aria-hidden="true">{icon}</span>}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2">
           <span className="text-[13px] font-mono font-medium text-[--text-primary] truncate">{label}</span>
@@ -75,7 +76,7 @@ export function TraceRow({ status = 'pending', label, value, error, duration, de
  *   content="Welcome to Papaya, Maya — it's genuinely great to have you joining us."
  * />
  */
-export function MessageBubble({ from = 'agent', recipient, channel, timestamp, content, redacted = false, className = '' }) {
+export function MessageBubble({ from = 'agent', recipient, channel, timestamp, content, redacted = false, channelIcon, className = '' }) {
   const channelIcons = {
     email: (
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -105,7 +106,7 @@ export function MessageBubble({ from = 'agent', recipient, channel, timestamp, c
         </span>
         {channel && (
           <span className="flex items-center gap-0.5 text-[10px] text-[--text-tertiary]">
-            {channelIcons[channel]}
+            {channelIcon ?? channelIcons[channel]}
             {channel}
           </span>
         )}

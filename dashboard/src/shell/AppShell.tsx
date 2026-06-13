@@ -5,11 +5,11 @@ import type { Screen } from './LeftNav';
 import { LiveRunScreen } from '../screens/LiveRunScreen';
 import { MessagesScreen } from '../screens/MessagesScreen';
 import { AuditScreen } from '../screens/AuditScreen';
+import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
 import {
   Users,
   Database,
-  Plug,
   Workflow,
 } from 'lucide-react';
 
@@ -52,13 +52,7 @@ export function AppShell() {
               description="Not implemented yet — coming in a later iteration."
             />
           )}
-          {activeScreen === 'integrations' && (
-            <PlaceholderScreen
-              icon={<Plug size={20} />}
-              title="Integrations"
-              description="Not implemented yet — coming in a later iteration."
-            />
-          )}
+          {activeScreen === 'integrations' && <IntegrationsScreen />}
           {activeScreen === 'workflow-editor' && (
             <PlaceholderScreen
               icon={<Workflow size={20} />}

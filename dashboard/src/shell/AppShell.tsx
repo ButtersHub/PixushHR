@@ -3,9 +3,9 @@ import { TopBar } from './TopBar';
 import { LeftNav } from './LeftNav';
 import type { Screen } from './LeftNav';
 import { LiveRunScreen } from '../screens/LiveRunScreen';
+import { MessagesScreen } from '../screens/MessagesScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
 import {
-  MessageSquare,
   FileText,
   Users,
   Database,
@@ -36,13 +36,7 @@ export function AppShell() {
           {activeScreen === 'live-run' && (
             <LiveRunScreen key={triggerKey} autoTrigger={triggerKey > 0} />
           )}
-          {activeScreen === 'messages' && (
-            <PlaceholderScreen
-              icon={<MessageSquare size={20} />}
-              title="Messages"
-              description="No messages yet. Run a scenario to see agent communications here."
-            />
-          )}
+          {activeScreen === 'messages' && <MessagesScreen />}
           {activeScreen === 'audit-log' && (
             <PlaceholderScreen
               icon={<FileText size={20} />}

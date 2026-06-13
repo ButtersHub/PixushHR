@@ -12,6 +12,21 @@ action is the one-time Hermes model login, then verify, then point Sensei at the
   grilling resolutions + design + Langfuse). **Architecture spec:** `docs/superpowers/specs/2026-06-11-architecture-design.md`.
   **Lean-slice plan:** `docs/superpowers/plans/2026-06-11-lean-e2e-slice.md`. **Deploy guide:** `docs/DEPLOY.md`.
 
+## ▶ NEXT SESSION — START HERE
+The lean slice is **live on AWS** (see deploy section). **Next work = Phase A: turn it into the real
+onboarding workflow.** Read in order: `docs/superpowers/plans/2026-06-13-widening-roadmap.md`
+(5-phase plan) → `docs/superpowers/plans/2026-06-13-phaseA-onboarding.md` (Phase A steps: **A1–A9** =
+onboarding workflow + mock-integration tools + Messages/Audit screens; **A10** = the
+configurable-integrations registry + Catalog/Installed config UI + the Workflow editor — the
+"configure integrations and their actions" half; build A10 after A1–A9 run).
+
+**Suggested opening prompt:** _"Read docs/STATUS.md and the two Phase A plan docs, then write the
+bite-sized Phase A implementation plan (writing-plans skill) and build it subagent-driven."_
+
+Reminder: model integrations as a **registry** from A1–A2 (even while tools are mock) so A10's config
+UI layers on without a rewrite. TDD → verify → merge per phase; verify finally against the deployed
+box `http://18.215.146.5:3000`.
+
 ## What's built & working
 - **`engine/`** (TypeScript/Fastify): `POST /execute` (Sensei contract → calls Hermes → returns
   `{response, structured}`), `POST /tools/execute` (domain-tool callback for the Hermes skill),

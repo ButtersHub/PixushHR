@@ -40,6 +40,26 @@ const upsertSchema = z.object({
 
 const getContractSchema = z.object({ tenant: z.string(), candidateId: z.string() });
 
+const askSchema = z.object({ tenant: z.string(), managerId: z.string(), question: z.string() });
+const teamsSchema = z.object({ tenant: z.string(), employeeId: z.string(), teams: z.array(z.string()).min(1) });
+// NOTE: deliberately NO `reason`/sensitive fields — structural confidentiality (decision #46),
+// hardened in Phase B. The invite tool only ever accepts logistics.
+const inviteSchema = z.object({
+  tenant: z.string(),
+  title: z.string(),
+  date: z.string(),
+  attendees: z.array(z.string()).min(1),
+  location: z.string(),
+});
+const brandingSchema = z.object({ tenant: z.string() });
+const sendSchema = z.object({
+  tenant: z.string(),
+  to: z.string(),
+  role: z.string(),
+  channel: z.enum(["email", "teams", "slack"]),
+  body: z.string(),
+});
+
 export const TOOLS: Record<string, ToolDef> = {
   "hris.upsert_employee": {
     name: "hris.upsert_employee",
@@ -73,6 +93,93 @@ export const TOOLS: Record<string, ToolDef> = {
         summary: `retrieved signed contract for ${contract.name}`,
       });
       return { ok: true, contract };
+    },
+  },
+
+  "hiring_manager.ask": {
+    name: "hiring_manager.ask",
+    integration: "Channels",
+    purpose: "Ask the hiring manager a question and get their answer (the collect-info step).",
+    run: async (store, args) => {
+      const { tenant, managerId, question } = parseArgs(askSchema, args);
+      const mgr = store.getManager(tenant, managerId);
+      if (!mgr) throw new Error(`no manager found: ${managerId}`);
+      store.audit({
+        tenant,
+        capability: "hiring_manager.ask",
+        target: managerId,
+        summary: `asked ${mgr.name}: ${question.slice(0, 60)}`,
+      });
+      return { ok: true, answer: mgr.cannedAnswer };
+    },
+  },
+
+  "teams.add_member": {
+    name: "teams.add_member",
+    integration: "Channels",
+    purpose: "Add the new hire to one or more Microsoft Teams.",
+    run: async (store, args) => {
+      const { tenant, employeeId, teams } = parseArgs(teamsSchema, args);
+      store.addMembership({ tenant, employeeId, teams });
+      store.audit({
+        tenant,
+        capability: "teams.add_member",
+        target: employeeId,
+        summary: `added to teams: ${teams.join(", ")}`,
+      });
+      return { ok: true, employeeId, teams };
+    },
+  },
+
+  "calendar.create_invite": {
+    name: "calendar.create_invite",
+    integration: "Calendar",
+    purpose: "Schedule a calendar invite (logistics only — title, date, attendees, location).",
+    run: async (store, args) => {
+      const { tenant, ...rest } = parseArgs(inviteSchema, args);
+      const invite = store.addInvite(tenant, rest);
+      store.audit({
+        tenant,
+        capability: "calendar.create_invite",
+        target: invite.id,
+        summary: `scheduled "${rest.title}" on ${rest.date}`,
+      });
+      return { ok: true, invite };
+    },
+  },
+
+  "content.get_branding": {
+    name: "content.get_branding",
+    integration: "Content",
+    purpose: "Fetch Papaya branding content (company story, culture video, welcome note).",
+    run: async (store, args) => {
+      const { tenant } = parseArgs(brandingSchema, args);
+      const branding = store.getBranding(tenant);
+      if (!branding) throw new Error("no branding configured");
+      store.audit({
+        tenant,
+        capability: "content.get_branding",
+        target: tenant,
+        summary: "retrieved branding pack",
+      });
+      return { ok: true, branding };
+    },
+  },
+
+  "channel.send_message": {
+    name: "channel.send_message",
+    integration: "Channels",
+    purpose: "Send a warm message to a recipient over a channel (email/teams/slack); recorded for the Messages view.",
+    run: async (store, args) => {
+      const { tenant, to, role, channel, body } = parseArgs(sendSchema, args);
+      const message = store.addMessage({ tenant, from: "agent", to, role, channel, body });
+      store.audit({
+        tenant,
+        capability: "channel.send_message",
+        target: to,
+        summary: `sent ${channel} message to ${to}`,
+      });
+      return { ok: true, message };
     },
   },
 };

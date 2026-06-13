@@ -20,9 +20,11 @@ services:
       - hermes-data:/root/.hermes   # persist Hermes config + WhatsApp link across rebuilds
 
   dashboard:
-    build: ./dashboard
-    environment:
-      VITE_ENGINE_URL: "http://localhost:3000"
+    build:
+      context: ./dashboard
+      args:
+        # baked into the static build; override via VITE_ENGINE_URL in .env for remote deploys
+        VITE_ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:3000}
     ports: ["8080:80"]
     depends_on: [engine]
 

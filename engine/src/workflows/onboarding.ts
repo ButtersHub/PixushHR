@@ -1,30 +1,27 @@
-// Typed onboarding workflow (decisions #19, #46). Phase A is linear + happy-path;
-// conditions/escalation are added in Phase B. The dashboard workflow editor (A10)
-// will render and edit this same structure.
-export type Audience = "employee" | "manager" | "hr" | "team";
+import type { WorkflowDefinition } from "./types.js";
 
-export interface WorkflowStep {
-  intent: string; // human-readable description of the step
-  capability: string; // the tool name the agent should call
-  audience: Audience; // who this step concerns (used by the confidentiality gate later)
-}
-
-export interface WorkflowDefinition {
-  id: string;
-  trigger: string;
-  steps: WorkflowStep[];
-}
-
+// Onboarding as a typed node-graph (decision #19). Phase A is a linear action chain; conditions
+// and escalation land in Phase B. The dashboard workflow editor renders/edits this exact shape.
 export const onboardingWorkflow: WorkflowDefinition = {
   id: "onboarding",
-  trigger: "A new hire needs to be onboarded.",
-  steps: [
-    { intent: "Extract the signed contract for the new hire.", capability: "ats.get_contract", audience: "hr" },
-    { intent: "Ask the hiring manager for team placement and buddy details.", capability: "hiring_manager.ask", audience: "manager" },
-    { intent: "Create the employee record in the HRIS.", capability: "hris.upsert_employee", audience: "hr" },
-    { intent: "Add the new hire to their Microsoft Teams.", capability: "teams.add_member", audience: "team" },
-    { intent: "Schedule a first-day welcome invite (logistics only).", capability: "calendar.create_invite", audience: "employee" },
-    { intent: "Fetch Papaya branding content to share.", capability: "content.get_branding", audience: "employee" },
-    { intent: "Send a warm welcome message to the new hire.", capability: "channel.send_message", audience: "employee" },
-  ],
+  name: "Onboarding",
+  version: 1,
+  trigger: { type: "onboard" },
+  root: "n1",
+  nodes: {
+    n1: { id: "n1", kind: "action", capability: "ats.get_contract", audience: "hr",
+      input: { tenant: { kind: "literal", value: "papaya" }, candidateId: { kind: "literal", value: "c1" } }, next: "n2" },
+    n2: { id: "n2", kind: "action", capability: "hiring_manager.ask", audience: "manager",
+      input: { tenant: { kind: "literal", value: "papaya" }, managerId: { kind: "ref", from: "step.n1.output.contract.managerId" }, question: { kind: "agent" } }, next: "n3" },
+    n3: { id: "n3", kind: "action", capability: "hris.upsert_employee", audience: "hr",
+      input: { tenant: { kind: "literal", value: "papaya" }, id: { kind: "literal", value: "e1" }, name: { kind: "ref", from: "step.n1.output.contract.name" }, role: { kind: "ref", from: "step.n1.output.contract.role" } }, next: "n4" },
+    n4: { id: "n4", kind: "action", capability: "teams.add_member", audience: "team",
+      input: { tenant: { kind: "literal", value: "papaya" }, employeeId: { kind: "literal", value: "e1" }, teams: { kind: "agent" } }, next: "n5" },
+    n5: { id: "n5", kind: "action", capability: "calendar.create_invite", audience: "employee",
+      input: { tenant: { kind: "literal", value: "papaya" }, title: { kind: "agent" }, date: { kind: "ref", from: "step.n1.output.contract.startDate" }, attendees: { kind: "agent" }, location: { kind: "agent" } }, next: "n6" },
+    n6: { id: "n6", kind: "action", capability: "content.get_branding", audience: "employee",
+      input: { tenant: { kind: "literal", value: "papaya" } }, next: "n7" },
+    n7: { id: "n7", kind: "action", capability: "channel.send_message", audience: "employee",
+      input: { tenant: { kind: "literal", value: "papaya" }, to: { kind: "ref", from: "step.n1.output.contract.name" }, role: { kind: "literal", value: "employee" }, channel: { kind: "literal", value: "email" }, body: { kind: "agent" } } },
+  },
 };

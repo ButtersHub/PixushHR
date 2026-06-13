@@ -1,28 +1,45 @@
-import type { WorkflowDefinition } from "./onboarding.js";
+import type { WorkflowDefinition, WorkflowNode } from "./types.js";
 
-type CatalogEntry = { name: string; integration: string; purpose: string };
+// Walks the node-graph from `root` (depth-first through next / then-else) and renders a concise
+// numbered NL playbook + the available-tool catalog (decision #30, soft-first).
+export function serializePlaybook(wf: WorkflowDefinition, availableTools: string[]): string {
+  const lines: string[] = [];
+  let n = 0;
+  const seen = new Set<string>();
 
-// Renders a WorkflowDefinition + tool catalog into a concise NL playbook the agent follows
-// (decision #30, soft-first). Injected by the orchestrator as a system message.
-export function serializePlaybook(wf: WorkflowDefinition, catalog: CatalogEntry[]): string {
-  const steps = wf.steps
-    .map((s, i) => `${i + 1}. ${s.intent} — call \`${s.capability}\``)
-    .join("\n");
+  function walk(id: string | undefined, indent: string): void {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    const node: WorkflowNode | undefined = wf.nodes[id];
+    if (!node) return;
+    if (node.kind === "action") {
+      n += 1;
+      lines.push(`${indent}${n}. Call \`${node.capability}\`${node.audience ? ` (audience: ${node.audience})` : ""}`);
+      walk(node.next, indent);
+    } else {
+      lines.push(`${indent}If ${node.expr}:`);
+      walk(node.then, indent + "   ");
+      if (node.else) {
+        lines.push(`${indent}else:`);
+        walk(node.else, indent + "   ");
+      }
+    }
+  }
 
-  const tools = catalog
-    .map((t) => `- ${t.name} (${t.integration}): ${t.purpose}`)
-    .join("\n");
+  walk(wf.root, "");
+
+  const catalog = availableTools.map((t) => `- ${t}`).join("\n");
 
   return [
-    `ONBOARDING PLAYBOOK`,
-    `Trigger: ${wf.trigger}`,
+    `${wf.name.toUpperCase()} PLAYBOOK`,
+    `Trigger: ${wf.trigger.type}`,
     ``,
     `Follow these steps in order. For each step, call exactly one tool via the hris-tool skill`,
     `by sending a JSON {name, args} payload, then use the result to inform the next step:`,
-    steps,
+    ...lines,
     ``,
     `AVAILABLE TOOLS`,
-    tools,
+    catalog,
     ``,
     `Always include "tenant" in args (use "papaya" unless told otherwise). After completing all`,
     `steps, reply with a warm, professional welcome message plus a one-line recap of what you did.`,

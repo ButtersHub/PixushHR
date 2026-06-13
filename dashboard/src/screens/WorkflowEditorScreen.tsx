@@ -18,6 +18,7 @@ export function WorkflowEditorScreen() {
   const [errorMsg, setErrorMsg] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const load = useCallback(async () => {
     setState('loading');
@@ -40,12 +41,14 @@ export function WorkflowEditorScreen() {
 
   async function save() {
     if (!wf) return;
+    setSaveError('');
     const res = await fetch(`${ENGINE}/workflows/onboarding?tenant=papaya`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(wf),
     });
     if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    else { setSaveError(`Save failed (${res.status})`); }
   }
 
   function updateNode(id: string, patch: Partial<Node>) {
@@ -88,6 +91,7 @@ export function WorkflowEditorScreen() {
         </div>
         <div className="flex items-center gap-2">
           {saved && <span className="text-[12px] text-[--green-700]">Saved</span>}
+          {saveError && <span className="text-[12px] text-[--red-600]">{saveError}</span>}
           <Button variant="secondary" size="sm" onClick={load}>Reset</Button>
           <Button variant="primary" size="sm" onClick={save}>Save</Button>
         </div>
@@ -158,7 +162,10 @@ function Inspector({ node, caps, onUpdate, onAddAfter }: InspectorProps) {
               <span className="text-[12px] text-[--text-secondary] mb-1 block">Audience</span>
               <Select
                 value={node.audience ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onUpdate(node.id, { audience: e.target.value } as Partial<Node>)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                  const v = e.target.value;
+                  onUpdate(node.id, { audience: v === '' ? undefined : v } as Partial<Node>);
+                }}
                 options={[{ value: '', label: '—' }, { value: 'employee', label: 'employee' }, { value: 'manager', label: 'manager' }, { value: 'hr', label: 'hr' }, { value: 'team', label: 'team' }]}
               />
             </label>
@@ -186,7 +193,9 @@ function Inspector({ node, caps, onUpdate, onAddAfter }: InspectorProps) {
             <Input value={node.expr} onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdate(node.id, { expr: e.target.value } as Partial<Node>)} />
           </label>
         )}
-        <Button variant="secondary" size="sm" onClick={() => onAddAfter(node.id)}>+ Add step after</Button>
+        {node.kind === 'action' && (
+          <Button variant="secondary" size="sm" onClick={() => onAddAfter(node.id)}>+ Add step after</Button>
+        )}
       </div>
     </Card>
   );

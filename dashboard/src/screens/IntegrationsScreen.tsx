@@ -37,11 +37,12 @@ export function IntegrationsScreen() {
   useEffect(() => { load(); }, [load]);
 
   async function act(id: string, path: string, body?: unknown) {
-    await fetch(`${ENGINE}/integrations/${id}/${path}`, {
+    const r = await fetch(`${ENGINE}/integrations/${id}/${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
+    if (!r.ok) { setErrorMsg(`Action failed (${r.status})`); setState('error'); return; }
     await load();
   }
 

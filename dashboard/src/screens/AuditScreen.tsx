@@ -13,9 +13,9 @@ interface AuditEntry {
 
 const COLUMNS = [
   {
-    key: 'capability',
+    key: 'system',
     label: 'System',
-    render: (v: unknown) => <ConnectorIcon name={String(v)} kind="capability" size={16} />,
+    render: (_v: unknown, row: Record<string, unknown>) => <ConnectorIcon name={String(row.capability)} kind="capability" size={16} />,
   },
   { key: 'capability', label: 'Capability', mono: true, sortable: true },
   { key: 'target', label: 'Target' },

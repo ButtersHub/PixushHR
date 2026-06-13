@@ -1,8 +1,9 @@
 import Fastify, { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import { z } from "zod";
 import type { InMemoryStore } from "./store.js";
 import type { HermesClient } from "./hermes.js";
-import { executeTool, TOOLS } from "./tools.js";
+import { executeTool, TOOLS, capabilitySpecs } from "./tools.js";
 import { runExecute } from "./orchestrator.js";
 import { gateToolCall, CONNECTORS, connectorState, defaultState, roleForConnector } from "./integrations.js";
 import { seedFixtures } from "./fixtures.js";
@@ -12,6 +13,24 @@ export interface Deps {
   store: InMemoryStore;
   hermes: HermesClient;
 }
+
+const inputBindingSchema = z.union([
+  z.object({ kind: z.literal("literal"), value: z.unknown() }),
+  z.object({ kind: z.literal("ref"), from: z.string() }),
+  z.object({ kind: z.literal("agent") }),
+]);
+const nodeSchema = z.union([
+  z.object({ id: z.string(), kind: z.literal("action"), capability: z.string(), input: z.record(inputBindingSchema), audience: z.string().optional(), next: z.string().optional() }),
+  z.object({ id: z.string(), kind: z.literal("condition"), expr: z.string(), then: z.string(), else: z.string().optional() }),
+]);
+const workflowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number(),
+  trigger: z.object({ type: z.string(), filter: z.string().optional() }),
+  root: z.string(),
+  nodes: z.record(nodeSchema),
+});
 
 function roleRecords(store: InMemoryStore, tenant: string, role: string): unknown[] {
   switch (role) {
@@ -120,6 +139,25 @@ export function buildApp(deps: Deps): FastifyInstance {
       return { error: `agent error: ${(err as Error).message}` };
     }
   });
+
+  app.get<{ Querystring: { tenant?: string } }>("/workflows", async (req) => {
+    return store.listWorkflows(req.query.tenant ?? "papaya").map((w) => ({ id: w.id, name: w.name, version: w.version }));
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { tenant?: string } }>("/workflows/:id", async (req, reply) => {
+    const wf = store.getWorkflow(req.query.tenant ?? "papaya", req.params.id);
+    if (!wf) { reply.code(404); return { ok: false, error: "unknown workflow" }; }
+    return wf;
+  });
+
+  app.put<{ Params: { id: string }; Querystring: { tenant?: string }; Body: unknown }>("/workflows/:id", async (req, reply) => {
+    const parsed = workflowSchema.safeParse(req.body);
+    if (!parsed.success) { reply.code(400); return { ok: false, error: "invalid workflow definition" }; }
+    store.setWorkflow(req.query.tenant ?? "papaya", parsed.data as import("./workflows/types.js").WorkflowDefinition);
+    return { ok: true };
+  });
+
+  app.get("/capabilities", async () => capabilitySpecs());
 
   return app;
 }

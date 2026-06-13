@@ -1,0 +1,82 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Domain Components" subtitle="FlowNode, BindingPill, TraceRow, MessageBubble, ConnectorCard" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config = { corePlugins: { preflight: false } }</script>
+<script src="../../_ds_bundle.js"></script>
+<style>
+  body { margin: 0; padding: 14px 16px; background: var(--surface-app); font-family: var(--font-sans); }
+  .label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-tertiary); margin-bottom: 8px; }
+  .section { margin-bottom: 16px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { FlowNode, BranchConnector, BindingPill, TraceRow, MessageBubble, ConnectorCard } = window.PixushHRDesignSystem_358ac3;
+
+function Demo() {
+  return (
+    <div>
+      <div className="section">
+        <div className="label">Flow nodes</div>
+        <div className="row">
+          <FlowNode variant="trigger" title="New hire confirmed" subtitle="source: comeet" />
+          <FlowNode variant="action" title="Upsert employee" subtitle="hris.upsert_employee" selected />
+          <FlowNode variant="condition" title="Has hiring manager?" />
+          <FlowNode variant="escalate" title="Escalate to HR" subtitle="missing required fields" />
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="label">Binding pills</div>
+        <div className="row" style={{alignItems:'center'}}>
+          <BindingPill variant="literal" value='"papaya"' field="tenant" />
+          <BindingPill variant="data-ref" value="trigger.payload.employeeId" field="id" />
+          <BindingPill variant="agent" value="agent-filled" field="message_body" />
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="label">Trace rows</div>
+        <div style={{background:'var(--surface-card)',border:'1px solid var(--border-default)',borderRadius:8,padding:'4px 0'}}>
+          <TraceRow status="success" label="Intent resolved" value="onboarding" duration={8} />
+          <TraceRow status="success" label="hris.upsert_employee" value="ok" duration={142} />
+          <TraceRow status="running" label="send_message" />
+          <TraceRow status="error" label="calendar.create_invite" error="Shapes API timeout — escalating" duration={3001} />
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        <div>
+          <div className="label">Messages</div>
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            <MessageBubble from="agent" recipient="Maya Cohen" channel="email" timestamp="2026-07-01T09:00:00Z"
+              content="Welcome to Papaya, Maya — it's genuinely great to have you joining us." />
+            <MessageBubble from="agent" recipient="Relevant parties" channel="email"
+              content="Last-day logistics: final working day is July 15. Meeting at 4pm." redacted />
+          </div>
+        </div>
+        <div>
+          <div className="label">Connector cards</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            <ConnectorCard name="Shapes" type="HRIS" description="Core employee data system" mode="mock" installed />
+            <ConnectorCard name="Slack" type="Channel" description="Messaging — available, not seeded" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+/* =========================================================
+   PixushHR — Base Reset & Utility Rules
+   Papaya Global · Operations Console Design System
+   ========================================================= */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+  background-color: var(--surface-app);
+}
+
+/* Focus visible utility — used by all interactive components */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
+/* Remove default focus for mouse users, keep for keyboard */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Smooth scrolling (respects reduced-motion via duration token) */
+@media (prefers-reduced-motion: no-preference) {
+  :root {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ── Utility: visually-hidden (screen reader only) ─────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ── Utility: truncate ──────────────────────────────────── */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Code / pre reset ────────────────────────────────────── */
+pre, code, kbd, samp {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* ── Transition helper classes ───────────────────────────── */
+.transition-colors  { transition: var(--transition-colors); }
+.transition-opacity { transition: var(--transition-opacity); }
+.transition-all     { transition: var(--transition-all); }

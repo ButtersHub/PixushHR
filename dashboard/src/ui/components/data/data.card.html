@@ -1,0 +1,65 @@
+<!-- @dsCard group="Components" viewport="700x280" name="Data Components" subtitle="Table, CodeViewer, KeyValueList" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config = { corePlugins: { preflight: false } }</script>
+<script src="../../_ds_bundle.js"></script>
+<style>
+  body { margin: 0; padding: 14px 16px; background: var(--surface-app); font-family: var(--font-sans); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-tertiary); margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { Table, CodeViewer, KeyValueList, Badge } = window.PixushHRDesignSystem_358ac3;
+
+const auditRows = [
+  { id:1, ts:'09:00:12', capability:'hris.upsert_employee', target:'e1', summary:'upserted Maya Cohen' },
+  { id:2, ts:'09:00:13', capability:'send_message', target:'maya@papaya.io', summary:'welcome email sent' },
+  { id:3, ts:'09:00:14', capability:'calendar.create_invite', target:'2026-07-01', summary:'last day invite created' },
+];
+
+const cols = [
+  { key:'ts', label:'Time', mono:true, muted:true },
+  { key:'capability', label:'Capability', mono:true },
+  { key:'target', label:'Target', muted:true },
+  { key:'summary', label:'Summary' },
+];
+
+function Demo() {
+  return (
+    <div>
+      <div className="label">Table (sortable)</div>
+      <Table columns={cols} rows={auditRows} sortKey="ts" sortDir="asc" />
+      <div style={{height:14}} />
+      <div className="grid">
+        <div>
+          <div className="label">Code viewer</div>
+          <CodeViewer label="Tool args" value={{ tenant:'papaya', id:'e1', name:'Maya Cohen', role:'Engineer', startDate:'2026-07-01' }} />
+        </div>
+        <div>
+          <div className="label">Key-value list</div>
+          <KeyValueList rows={[
+            { label:'Tenant', value:'papaya' },
+            { label:'Employee', value:'Maya Cohen' },
+            { label:'Role', value: <Badge variant="info">Engineer</Badge> },
+            { label:'Start date', value:'2026-07-01', mono:true },
+          ]} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+</script>
+</body>
+</html>

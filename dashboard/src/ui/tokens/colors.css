@@ -1,0 +1,195 @@
+/* =========================================================
+   PixushHR — Color Tokens
+   Papaya Global · Operations Console Design System
+   ========================================================= */
+
+:root {
+
+  /* ── Papaya scale (warm coral-orange; brand primary) ────── */
+  --papaya-50:  #fff4ee;
+  --papaya-100: #ffe5d0;
+  --papaya-200: #ffc99e;
+  --papaya-300: #ffa468;
+  --papaya-400: #ff7b30;
+  --papaya-500: #f55d0f;   /* ★ main accent */
+  --papaya-600: #dc450a;
+  --papaya-700: #b5320a;
+  --papaya-800: #8f260d;
+  --papaya-900: #74220f;
+  --papaya-950: #3e0f04;
+
+  /* ── Neutral scale (warm-tinted gray) ───────────────────── */
+  --neutral-0:   #ffffff;
+  --neutral-50:  #faf9f7;
+  --neutral-100: #f4f2ef;
+  --neutral-200: #e8e5e0;
+  --neutral-300: #d2ceca;
+  --neutral-400: #a8a49d;
+  --neutral-500: #78746e;
+  --neutral-600: #5c5853;
+  --neutral-700: #3d3a36;
+  --neutral-800: #26231f;
+  --neutral-900: #151210;
+  --neutral-950: #0a0908;
+
+  /* ── Success (green) ────────────────────────────────────── */
+  --green-50:  #f0fdf4;
+  --green-100: #dcfce7;
+  --green-200: #bbf7d0;
+  --green-500: #22c55e;
+  --green-600: #16a34a;
+  --green-700: #15803d;
+  --green-900: #14532d;
+
+  /* ── Info (blue) ────────────────────────────────────────── */
+  --blue-50:  #eff6ff;
+  --blue-100: #dbeafe;
+  --blue-200: #bfdbfe;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --blue-900: #1e3a8a;
+
+  /* ── Warning (amber) ────────────────────────────────────── */
+  --amber-50:  #fffbeb;
+  --amber-100: #fef3c7;
+  --amber-200: #fde68a;
+  --amber-500: #f59e0b;
+  --amber-600: #d97706;
+  --amber-700: #b45309;
+  --amber-900: #78350f;
+
+  /* ── Danger (red) ───────────────────────────────────────── */
+  --red-50:  #fef2f2;
+  --red-100: #fee2e2;
+  --red-200: #fecaca;
+  --red-500: #ef4444;
+  --red-600: #dc2626;
+  --red-700: #b91c1c;
+  --red-900: #7f1d1d;
+
+  /* ── Status: integration modes ──────────────────────────── */
+  /* mock = indigo — simulated/sandboxed */
+  --status-mock-base:    #6366f1;
+  --status-mock-bg:      #eef2ff;
+  --status-mock-border:  #c7d2fe;
+  --status-mock-text:    #3730a3;
+
+  /* real = emerald — live production */
+  --status-real-base:    #10b981;
+  --status-real-bg:      #ecfdf5;
+  --status-real-border:  #a7f3d0;
+  --status-real-text:    #047857;
+
+  /* off = neutral — disabled/not installed */
+  --status-off-base:     #9ca3af;
+  --status-off-bg:       #f9fafb;
+  --status-off-border:   #e5e7eb;
+  --status-off-text:     #6b7280;
+
+  /* ── Status: health ─────────────────────────────────────── */
+  --health-ok-base:      #22c55e;
+  --health-ok-bg:        #f0fdf4;
+  --health-ok-text:      #15803d;
+
+  --health-warn-base:    #f59e0b;
+  --health-warn-bg:      #fffbeb;
+  --health-warn-text:    #b45309;
+
+  --health-down-base:    #ef4444;
+  --health-down-bg:      #fef2f2;
+  --health-down-text:    #b91c1c;
+
+  /* ── Semantic surface tokens ─────────────────────────────── */
+  --surface-app:        var(--neutral-50);
+  --surface-card:       var(--neutral-0);
+  --surface-overlay:    var(--neutral-0);
+  --surface-sunken:     var(--neutral-100);
+  --surface-hover:      var(--neutral-100);
+  --surface-selected:   var(--papaya-50);
+  --surface-danger:     var(--red-50);
+  --surface-nav:        var(--neutral-800);
+  --surface-nav-hover:  var(--neutral-700);
+  --surface-nav-active: var(--neutral-700);
+  --surface-topbar:     var(--neutral-0);
+
+  /* ── Semantic text tokens ────────────────────────────────── */
+  --text-primary:   var(--neutral-900);
+  --text-secondary: var(--neutral-600);
+  --text-tertiary:  var(--neutral-400);
+  --text-inverse:   var(--neutral-0);
+  --text-accent:    var(--papaya-600);
+  --text-danger:    var(--red-600);
+  --text-success:   var(--green-700);
+  --text-warning:   var(--amber-700);
+  --text-info:      var(--blue-700);
+  --text-nav:       var(--neutral-300);
+  --text-nav-muted: var(--neutral-500);
+
+  /* ── Semantic border tokens ──────────────────────────────── */
+  --border-default: var(--neutral-200);
+  --border-strong:  var(--neutral-300);
+  --border-focus:   var(--papaya-500);
+  --border-danger:  var(--red-500);
+  --border-success: var(--green-500);
+  --border-nav:     var(--neutral-700);
+
+  /* ── Interactive (accent) ────────────────────────────────── */
+  --interactive-primary:         var(--papaya-500);
+  --interactive-primary-hover:   var(--papaya-600);
+  --interactive-primary-active:  var(--papaya-700);
+  --interactive-primary-text:    var(--neutral-0);
+  --interactive-primary-subtle:  var(--papaya-50);
+
+  --interactive-secondary:         var(--neutral-0);
+  --interactive-secondary-hover:   var(--neutral-50);
+  --interactive-secondary-active:  var(--neutral-100);
+  --interactive-secondary-border:  var(--neutral-300);
+  --interactive-secondary-text:    var(--neutral-800);
+
+  --interactive-danger:         var(--red-600);
+  --interactive-danger-hover:   var(--red-700);
+  --interactive-danger-active:  var(--red-800, #991b1b);
+  --interactive-danger-text:    var(--neutral-0);
+
+  --interactive-ghost:        transparent;
+  --interactive-ghost-hover:  var(--neutral-100);
+  --interactive-ghost-active: var(--neutral-200);
+  --interactive-ghost-text:   var(--neutral-700);
+}
+
+/* ── Dark mode overrides ─────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-app:        var(--neutral-950);
+    --surface-card:       var(--neutral-900);
+    --surface-overlay:    var(--neutral-800);
+    --surface-sunken:     var(--neutral-950);
+    --surface-hover:      var(--neutral-800);
+    --surface-selected:   color-mix(in srgb, var(--papaya-500) 15%, var(--neutral-900));
+    --surface-nav:        var(--neutral-950);
+    --surface-nav-hover:  var(--neutral-800);
+    --surface-nav-active: var(--neutral-800);
+    --surface-topbar:     var(--neutral-900);
+
+    --text-primary:   var(--neutral-50);
+    --text-secondary: var(--neutral-400);
+    --text-tertiary:  var(--neutral-600);
+    --text-nav:       var(--neutral-200);
+    --text-nav-muted: var(--neutral-500);
+
+    --border-default: var(--neutral-800);
+    --border-strong:  var(--neutral-700);
+    --border-nav:     var(--neutral-800);
+
+    --interactive-secondary:        var(--neutral-900);
+    --interactive-secondary-hover:  var(--neutral-800);
+    --interactive-secondary-active: var(--neutral-700);
+    --interactive-secondary-border: var(--neutral-700);
+    --interactive-secondary-text:   var(--neutral-100);
+
+    --interactive-ghost-hover:  var(--neutral-800);
+    --interactive-ghost-active: var(--neutral-700);
+    --interactive-ghost-text:   var(--neutral-300);
+  }
+}

@@ -1,0 +1,14 @@
+/* =========================================================
+   PixushHR Design System — Global Entry Point
+   Papaya Global · Operations Console
+   ---------------------------------------------------------
+   This file is the single import consumers link.
+   Never put inline rules here; use @import only.
+   ========================================================= */
+
+@import './tokens/colors.css';
+@import './tokens/typography.css';
+@import './tokens/spacing.css';
+@import './tokens/elevation.css';
+@import './tokens/motion.css';
+@import './tokens/base.css';

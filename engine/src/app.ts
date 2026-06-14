@@ -7,6 +7,7 @@ import { executeTool, TOOLS, capabilitySpecs } from "./tools.js";
 import { runExecute } from "./orchestrator.js";
 import { gateToolCall, CONNECTORS, connectorState, defaultState, roleForConnector } from "./integrations.js";
 import { seedFixtures } from "./fixtures.js";
+import { currentContext } from "./requestContext.js";
 import type { ExecuteRequest, ExecuteResponse } from "./models.js";
 
 export interface Deps {
@@ -54,9 +55,13 @@ export function buildApp(deps: Deps): FastifyInstance {
   app.post<{ Body: { name: string; args: unknown; runId?: string } }>("/tools/execute", async (req, reply) => {
     const { name, args, runId } = req.body;
     const tenant = ((args as { tenant?: string })?.tenant) ?? "papaya";
+    // If the caller didn't pass runId (e.g. the real Hermes skill, which doesn't know about it),
+    // fall back to the runId set by the orchestrator via AsyncLocalStorage — so every tool call
+    // made during one /execute request shares the same runId in the audit log.
+    const effectiveRunId = runId ?? currentContext()?.runId;
     try {
       gateToolCall(store, tenant, name);
-      return await executeTool(store, name, args, { runId, actor: "pixush" });
+      return await executeTool(store, name, args, { runId: effectiveRunId, actor: "pixush" });
     } catch (err) {
       reply.code(400);
       return { ok: false, error: (err as Error).message };

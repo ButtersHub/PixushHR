@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FileText, ScrollText, Search, X, Check, AlertTriangle, AlertOctagon,
   User, Webhook, Server, Filter, ChevronDown, ChevronRight, Layers,
-  Clock, Copy, Zap, RefreshCw,
+  Clock, Copy, RefreshCw,
 } from 'lucide-react';
 import { Card, PageHeader, EmptyState, LoadingState, ErrorState, ConnectorIcon, FrenchieIcon, Dropdown } from '../ui/index';
 import type { DropdownOption } from '../ui/index';
@@ -280,36 +280,41 @@ export function AuditScreen() {
                             runId={g.runId}
                             entries={g.entries}
                             trigger={trigger}
+                            onFilter={() => setFlowFilter(g.runId!)}
+                          />
+                          {/* trigger row stays visible even when steps are collapsed */}
+                          <TriggerRow
+                            entry={trigger}
+                            stepCount={steps.length}
                             collapsed={flowCollapsed}
-                            onToggle={() => {
+                            onToggleCollapse={() => {
                               const s = new Set(collapsedFlows);
                               if (s.has(g.runId!)) s.delete(g.runId!); else s.add(g.runId!);
                               setCollapsedFlows(s);
                             }}
-                            onFilter={() => setFlowFilter(g.runId!)}
+                            selected={selectedId === trigger.id}
+                            onSelect={() => setSelectedId(trigger.id)}
+                            compact={!!selected}
                           />
                           {!flowCollapsed && (
-                            <>
-                              <TriggerRow entry={trigger} selected={selectedId === trigger.id} onSelect={() => setSelectedId(trigger.id)} compact={!!selected} />
-                              <div className="relative">
-                                {/* vertical connector line from trigger down through steps */}
-                                {steps.length > 0 && (
-                                  <div className="pointer-events-none absolute left-[26px] top-0 bottom-3 w-px bg-[--border-default]" aria-hidden />
-                                )}
-                                {steps.map((e, i) => (
-                                  <Row
-                                    key={e.id}
-                                    entry={e}
-                                    step={i + 1}
-                                    relativeMs={new Date(e.ts).getTime() - flowStart}
-                                    selected={selectedId === e.id}
-                                    onSelect={() => setSelectedId(e.id)}
-                                    compact={!!selected}
-                                    inFlow
-                                  />
-                                ))}
-                              </div>
-                            </>
+                            <div className="relative">
+                              {/* vertical connector line from trigger down through steps */}
+                              {steps.length > 0 && (
+                                <div className="pointer-events-none absolute left-[26px] top-0 bottom-3 w-px bg-[--border-default]" aria-hidden />
+                              )}
+                              {steps.map((e, i) => (
+                                <Row
+                                  key={e.id}
+                                  entry={e}
+                                  step={i + 1}
+                                  relativeMs={new Date(e.ts).getTime() - flowStart}
+                                  selected={selectedId === e.id}
+                                  onSelect={() => setSelectedId(e.id)}
+                                  compact={!!selected}
+                                  inFlow
+                                />
+                              ))}
+                            </div>
                           )}
                         </li>
                       );
@@ -570,25 +575,48 @@ function Row({ entry: e, selected, onSelect, inFlow, step, relativeMs, compact }
 }
 
 /* ── Trigger row (the visual "start" of a flow group) ─────────── */
-function TriggerRow({ entry: e, selected, onSelect, compact }: {
-  entry: AuditEntry; selected: boolean; onSelect: () => void; compact: boolean;
+function TriggerRow({ entry: e, selected, onSelect, compact, stepCount, collapsed, onToggleCollapse }: {
+  entry: AuditEntry;
+  selected: boolean;
+  onSelect: () => void;
+  compact: boolean;
+  /** how many steps follow under this trigger (shown when collapsed) */
+  stepCount: number;
+  /** whether the steps under this trigger are hidden */
+  collapsed: boolean;
+  /** toggles collapse/expand of the steps under this trigger */
+  onToggleCollapse: () => void;
 }) {
   const actor = ACTOR_META[e.actor];
   const ActorIcon = actor.renderIcon;
+
+  // Outer container is a div+role=button so we can nest the chevron button inside without
+  // violating HTML's no-nested-buttons rule. Click anywhere except the chevron selects the row.
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onSelect(); } }}
       className={[
-        'relative grid w-full items-center gap-3 border-b border-[--border-default] px-3 py-2.5 text-left transition-colors',
+        'relative grid w-full cursor-pointer items-center gap-3 border-b border-[--border-default] px-3 py-2.5 text-left transition-colors',
         compact ? GRID_COMPACT : GRID_FULL,
         selected ? 'bg-[--papaya-50]' : 'bg-[--amber-50]/40 hover:bg-[--amber-50]/70',
       ].join(' ')}
     >
-      {/* col 1: trigger marker (lightning bolt) */}
+      {/* col 1: chevron button — toggles steps. Clicking it doesn't bubble to the row. */}
       <span className="relative flex items-center justify-center">
-        <span className="grid h-5 w-5 -translate-x-[2px] place-items-center rounded-full bg-[--amber-100] text-[--amber-700] ring-1 ring-[--amber-200]">
-          <Zap size={11} />
-        </span>
+        <button
+          type="button"
+          onClick={(ev) => { ev.stopPropagation(); onToggleCollapse(); }}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? `Show ${stepCount} steps` : 'Hide steps'}
+          className="group/toggle grid h-5 w-5 -translate-x-[2px] place-items-center rounded-full bg-[--amber-100] text-[--amber-700] ring-1 ring-[--amber-200] transition-colors hover:bg-[--amber-200] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--amber-500]"
+        >
+          {collapsed
+            ? <ChevronRight size={11} className="transition-transform" />
+            : <ChevronDown size={11} className="transition-transform" />}
+        </button>
       </span>
 
       <span className="flex items-center justify-center">
@@ -599,6 +627,11 @@ function TriggerRow({ entry: e, selected, onSelect, compact }: {
         <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[--amber-700]">
           <span>Trigger</span>
           <span className="font-mono text-[10px] font-medium normal-case tracking-normal text-[--text-tertiary]">{e.capability}</span>
+          {collapsed && stepCount > 0 && (
+            <span className="ml-1 rounded-full bg-[--amber-100] px-1.5 py-px text-[9px] font-semibold text-[--amber-700] normal-case tracking-normal">
+              +{stepCount} {stepCount === 1 ? 'step' : 'steps'}
+            </span>
+          )}
         </p>
         <p className="truncate text-[13px] font-medium text-[--text-primary]">{e.label ?? humanize(e.capability)}</p>
       </div>
@@ -612,7 +645,7 @@ function TriggerRow({ entry: e, selected, onSelect, compact }: {
       <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]">
         {new Date(e.ts).toLocaleTimeString()}
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -623,9 +656,9 @@ function formatRel(ms: number): string {
 }
 
 /* ── Flow header (group-by-flow view) ─────────────────────────── */
-function FlowHeader({ runId, entries, trigger, collapsed, onToggle, onFilter }: {
+function FlowHeader({ runId, entries, trigger, onFilter }: {
   runId: string; entries: AuditEntry[]; trigger: AuditEntry;
-  collapsed: boolean; onToggle: () => void; onFilter: () => void;
+  onFilter: () => void;
 }) {
   const tsList = entries.map((e) => new Date(e.ts).getTime());
   const dur = Math.max(...tsList) - Math.min(...tsList);
@@ -633,9 +666,6 @@ function FlowHeader({ runId, entries, trigger, collapsed, onToggle, onFilter }: 
   const bad = entries.length - ok;
   return (
     <div className="flex items-center gap-2 border-y border-[--border-default] bg-gradient-to-r from-[--surface-sunken] to-[--surface-card] px-3 py-1.5">
-      <button onClick={onToggle} className="grid h-5 w-5 place-items-center rounded text-[--text-secondary] hover:bg-[--surface-card]" aria-label={collapsed ? 'Expand flow' : 'Collapse flow'}>
-        {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-      </button>
       <Layers size={12} className="text-[--text-tertiary]" />
       <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[--text-secondary]">Flow</span>
       <span className="font-mono text-[11px] text-[--text-primary]">{shortId(runId)}</span>

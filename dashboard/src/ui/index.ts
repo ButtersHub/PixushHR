@@ -3,6 +3,7 @@ export { Button, IconButton } from './components/core/Button';
 export { Badge, StatusDot } from './components/core/Badge';
 export { Card, CardHeader, CardBody, CardDivider, KeyValueRow, KeyValueList } from './components/core/Card';
 export { Input, Textarea, Select, Toggle } from './components/core/Input';
+export { PageHeader } from './components/core/PageHeader';
 export { Toast, ToastContainer } from './components/core/Toast';
 
 // Data
@@ -15,3 +16,4 @@ export { EmptyState, LoadingState, ErrorState, StreamingState } from './componen
 // Domain
 export { FlowNode, BranchConnector, BindingPill } from './components/domain/FlowNode';
 export { TraceRow, MessageBubble, ConnectorCard } from './components/domain/TraceRow';
+export { ConnectorIcon } from './components/domain/ConnectorIcon';

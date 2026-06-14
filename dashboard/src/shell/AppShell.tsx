@@ -3,14 +3,14 @@ import { TopBar } from './TopBar';
 import { LeftNav } from './LeftNav';
 import type { Screen } from './LeftNav';
 import { LiveRunScreen } from '../screens/LiveRunScreen';
+import { MessagesScreen } from '../screens/MessagesScreen';
+import { AuditScreen } from '../screens/AuditScreen';
+import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
+import { WorkflowEditorScreen } from '../screens/WorkflowEditorScreen';
 import {
-  MessageSquare,
-  FileText,
   Users,
   Database,
-  Plug,
-  Workflow,
 } from 'lucide-react';
 
 export function AppShell() {
@@ -36,20 +36,8 @@ export function AppShell() {
           {activeScreen === 'live-run' && (
             <LiveRunScreen key={triggerKey} autoTrigger={triggerKey > 0} />
           )}
-          {activeScreen === 'messages' && (
-            <PlaceholderScreen
-              icon={<MessageSquare size={20} />}
-              title="Messages"
-              description="No messages yet. Run a scenario to see agent communications here."
-            />
-          )}
-          {activeScreen === 'audit-log' && (
-            <PlaceholderScreen
-              icon={<FileText size={20} />}
-              title="Audit log"
-              description="Not implemented yet — coming in a later iteration."
-            />
-          )}
+          {activeScreen === 'messages' && <MessagesScreen />}
+          {activeScreen === 'audit-log' && <AuditScreen />}
           {activeScreen === 'users-roles' && (
             <PlaceholderScreen
               icon={<Users size={20} />}
@@ -64,20 +52,8 @@ export function AppShell() {
               description="Not implemented yet — coming in a later iteration."
             />
           )}
-          {activeScreen === 'integrations' && (
-            <PlaceholderScreen
-              icon={<Plug size={20} />}
-              title="Integrations"
-              description="Not implemented yet — coming in a later iteration."
-            />
-          )}
-          {activeScreen === 'workflow-editor' && (
-            <PlaceholderScreen
-              icon={<Workflow size={20} />}
-              title="Workflow editor"
-              description="Not implemented yet — coming in a later iteration."
-            />
-          )}
+          {activeScreen === 'integrations' && <IntegrationsScreen />}
+          {activeScreen === 'workflow-editor' && <WorkflowEditorScreen />}
         </main>
       </div>
     </div>

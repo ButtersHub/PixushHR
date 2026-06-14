@@ -7,10 +7,12 @@ import {
   CardBody,
   Textarea,
   Table,
+  TraceRow,
   LoadingState,
   ErrorState,
   EmptyState,
   StreamingState,
+  ConnectorIcon,
 } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
@@ -153,6 +155,29 @@ export function LiveRunScreen({ autoTrigger = false }: LiveRunScreenProps) {
           )}
         </CardBody>
       </Card>
+
+      {/* Tool-calls trace card */}
+      {runState === 'done' && audit.length > 0 && (
+        <Card>
+          <CardHeader
+            title="Tool calls"
+            subtitle={`${audit.length} ${audit.length === 1 ? 'step' : 'steps'} across systems`}
+          />
+          <CardBody>
+            <div role="list" data-testid="trace-list">
+              {audit.map((e, i) => (
+                <TraceRow
+                  key={i}
+                  status="success"
+                  label={e.capability}
+                  value={e.summary}
+                  icon={<ConnectorIcon name={e.capability} kind="capability" size={16} />}
+                />
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Audit card */}
       <Card padding={false}>

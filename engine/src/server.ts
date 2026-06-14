@@ -3,6 +3,7 @@ import { flushTracing } from "./tracing.js";
 
 import { buildApp } from "./app.js";
 import { InMemoryStore } from "./store.js";
+import { seedFixtures } from "./fixtures.js";
 import { HttpHermesClient } from "./hermes.js";
 import { StubHermes } from "./stubHermes.js";
 
@@ -15,8 +16,11 @@ const hermes =
     ? new StubHermes(`http://127.0.0.1:${port}`)
     : new HttpHermesClient(hermesUrl, hermesKey);
 
+const store = new InMemoryStore();
+seedFixtures(store);
+
 const app = buildApp({
-  store: new InMemoryStore(),
+  store,
   hermes,
 });
 

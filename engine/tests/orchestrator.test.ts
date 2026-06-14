@@ -55,12 +55,30 @@ describe("/execute", () => {
   });
 });
 
+describe("/execute playbook injection", () => {
+  it("injects the onboarding playbook + tool catalog into the Hermes messages", async () => {
+    const hermes = new FakeHermes("Welcome Maya!");
+    const app = buildApp({ store: new InMemoryStore(), hermes });
+    await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: { task: "Onboard Maya Cohen", context: { tenant: "papaya" } },
+    });
+    const joined = hermes.lastMessages.map((m) => m.content).join("\n");
+    expect(joined).toMatch(/ONBOARDING PLAYBOOK/);
+    expect(joined).toContain("ats.get_contract");
+    expect(joined).toContain("channel.send_message");
+    expect(joined).toContain("Onboard Maya Cohen");
+  });
+});
+
 describe("runExecute (no-op tracing path)", () => {
   it("returns content from Hermes and correct shape when tracing is DISABLED (no LANGFUSE env)", async () => {
     // LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY are absent in the test environment,
     // so tracing falls through to the no-op path — this validates that behaviour.
     const hermes = new FakeHermes("Hello from Hermes!");
-    const reply = await runExecute({ task: "Onboard Test User", context: { tenant: "acme" } }, hermes);
+    const { InMemoryStore } = await import("../src/store.js");
+    const reply = await runExecute({ task: "Onboard Test User", context: { tenant: "acme" } }, hermes, new InMemoryStore());
     expect(reply.response).toBe("Hello from Hermes!");
     expect(reply.tenant).toBe("acme");
     expect(typeof reply.requestId).toBe("string");

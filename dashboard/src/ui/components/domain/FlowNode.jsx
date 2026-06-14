@@ -78,9 +78,9 @@ export function FlowNode({ variant = 'action', title, subtitle, selected = false
         'group relative flex items-start gap-2.5 text-left',
         'w-56 rounded-lg border-2 p-3',
         'transition-all duration-100',
-        'hover:shadow-[--shadow-md] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--papaya-500]',
+        'hover:[box-shadow:var(--shadow-md)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--papaya-500]',
         c.border, c.bg,
-        selected ? 'shadow-[--shadow-base]' : 'shadow-[--shadow-xs]',
+        selected ? '[box-shadow:var(--shadow-base)]' : '[box-shadow:var(--shadow-xs)]',
         className,
       ].join(' ')}
       aria-pressed={selected}

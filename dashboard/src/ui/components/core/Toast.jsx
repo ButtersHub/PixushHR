@@ -46,7 +46,7 @@ export function Toast({ type = 'info', message, action, onDismiss }) {
       className={[
         'flex items-start gap-2.5 bg-[--surface-card]',
         'border border-[--border-default] border-l-4 rounded-lg',
-        'shadow-[--shadow-md] px-3 py-2.5 w-80 max-w-full',
+        '[box-shadow:var(--shadow-md)] px-3 py-2.5 w-80 max-w-full',
         styles[type],
       ].join(' ')}
     >

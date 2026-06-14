@@ -51,12 +51,12 @@ export function buildApp(deps: Deps): FastifyInstance {
 
   app.get("/health", async () => ({ status: "ok" }));
 
-  app.post<{ Body: { name: string; args: unknown } }>("/tools/execute", async (req, reply) => {
-    const { name, args } = req.body;
+  app.post<{ Body: { name: string; args: unknown; runId?: string } }>("/tools/execute", async (req, reply) => {
+    const { name, args, runId } = req.body;
     const tenant = ((args as { tenant?: string })?.tenant) ?? "papaya";
     try {
       gateToolCall(store, tenant, name);
-      return await executeTool(store, name, args);
+      return await executeTool(store, name, args, { runId, actor: "pixush" });
     } catch (err) {
       reply.code(400);
       return { ok: false, error: (err as Error).message };
@@ -76,6 +76,16 @@ export function buildApp(deps: Deps): FastifyInstance {
   app.post("/reset", async () => {
     store.reset();
     seedFixtures(store);
+    store.audit({
+      tenant: "papaya",
+      capability: "system.reset",
+      label: "Reset workspace",
+      integration: "System",
+      target: "papaya",
+      summary: "Cleared all data and reseeded synthetic fixtures",
+      actor: "system",
+      status: "success",
+    });
     return { ok: true };
   });
 
@@ -92,6 +102,12 @@ export function buildApp(deps: Deps): FastifyInstance {
     const def = CONNECTORS.find((c) => c.id === req.params.id);
     if (!def) { reply.code(404); return { ok: false, error: "unknown connector" }; }
     store.setConnectorState("papaya", def.id, { ...defaultState(def), installed: true, enabled: true });
+    store.audit({
+      tenant: "papaya", actor: "user", status: "success",
+      capability: "integrations.install", label: "Install integration",
+      integration: def.role, target: def.name,
+      summary: `Installed ${def.name}`, inputs: { id: def.id },
+    });
     return { ok: true };
   });
 
@@ -99,6 +115,12 @@ export function buildApp(deps: Deps): FastifyInstance {
     const def = CONNECTORS.find((c) => c.id === req.params.id);
     if (!def) { reply.code(404); return { ok: false, error: "unknown connector" }; }
     store.setConnectorState("papaya", def.id, { ...connectorState(store, "papaya", def), installed: false, enabled: false });
+    store.audit({
+      tenant: "papaya", actor: "user", status: "success",
+      capability: "integrations.uninstall", label: "Uninstall integration",
+      integration: def.role, target: def.name,
+      summary: `Uninstalled ${def.name}`, inputs: { id: def.id },
+    });
     return { ok: true };
   });
 
@@ -106,6 +128,14 @@ export function buildApp(deps: Deps): FastifyInstance {
     const def = CONNECTORS.find((c) => c.id === req.params.id);
     if (!def) { reply.code(404); return { ok: false, error: "unknown connector" }; }
     store.setConnectorState("papaya", def.id, { ...connectorState(store, "papaya", def), enabled: req.body.enabled });
+    store.audit({
+      tenant: "papaya", actor: "user", status: "success",
+      capability: req.body.enabled ? "integrations.enable" : "integrations.disable",
+      label: req.body.enabled ? "Enable integration" : "Disable integration",
+      integration: def.role, target: def.name,
+      summary: `${req.body.enabled ? "Enabled" : "Disabled"} ${def.name}`,
+      inputs: { id: def.id, enabled: req.body.enabled },
+    });
     return { ok: true };
   });
 
@@ -120,6 +150,13 @@ export function buildApp(deps: Deps): FastifyInstance {
         mock: { ...cur.config.mock, ...(req.body.mock ?? {}) },
         prod: { ...cur.config.prod, ...(req.body.prod ?? {}) },
       },
+    });
+    store.audit({
+      tenant: "papaya", actor: "user", status: "success",
+      capability: "integrations.configure", label: "Configure integration",
+      integration: def.role, target: def.name,
+      summary: req.body.mode ? `Set ${def.name} mode to ${req.body.mode}` : `Updated ${def.name} config`,
+      inputs: req.body,
     });
     return { ok: true };
   });

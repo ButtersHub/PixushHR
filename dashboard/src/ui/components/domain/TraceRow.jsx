@@ -154,8 +154,8 @@ export function ConnectorCard({ name, type, description, mode, installed = false
   return (
     <div className={[
       'group flex flex-col gap-2.5 p-3 rounded-lg border border-[--border-default]',
-      'bg-[--surface-card] shadow-[--shadow-xs]',
-      'hover:shadow-[--shadow-sm] transition-shadow duration-100',
+      'bg-[--surface-card] [box-shadow:var(--shadow-xs)]',
+      'hover:[box-shadow:var(--shadow-sm)] transition-shadow duration-100',
       className,
     ].join(' ')}>
       <div className="flex items-start justify-between gap-2">

@@ -14,13 +14,19 @@ describe("InMemoryStore", () => {
     expect(store.getEmployee("acme", "e1")).toBeUndefined();
   });
 
-  it("records audit entries", () => {
+  it("records audit entries with id, ts, actor, and status", () => {
     const store = new InMemoryStore();
-    store.audit({ tenant: "papaya", capability: "hris.upsert_employee", target: "e1", summary: "created" });
+    store.audit({
+      tenant: "papaya", capability: "hris.upsert_employee", target: "e1", summary: "created",
+      actor: "pixush", status: "success",
+    });
     const log = store.getAudit("papaya");
     expect(log).toHaveLength(1);
     expect(log[0].capability).toBe("hris.upsert_employee");
+    expect(log[0].actor).toBe("pixush");
+    expect(log[0].status).toBe("success");
     expect(typeof log[0].ts).toBe("string");
+    expect(typeof log[0].id).toBe("string");
   });
 });
 

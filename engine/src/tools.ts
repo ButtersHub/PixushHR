@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { InMemoryStore } from "./store.js";
+import type { InMemoryStore, AuditActor, AuditEntry } from "./store.js";
 
 export interface ToolResult {
   ok: boolean;
@@ -13,10 +13,15 @@ export type ToolFn = (store: InMemoryStore, args: unknown) => Promise<ToolResult
 export interface ToolDef {
   name: string;
   integration: "HRIS" | "ATS" | "Channels" | "TaskBoard" | "Calendar" | "Content";
+  /** friendly display name surfaced in audit + workflow editor (e.g. "Update employee record") */
+  label: string;
   purpose: string;
   schema: z.ZodObject<z.ZodRawShape>;
   sideEffectful: boolean;
+  /** runs the side-effect. Does NOT emit audit entries — `executeTool` does that centrally. */
   run: ToolFn;
+  /** derives `{target, summary}` for the audit entry from the parsed args + result. */
+  summarize: (args: Record<string, unknown>, result: ToolResult) => { target: string; summary: string };
 }
 
 function parseArgs<T>(schema: z.ZodType<T>, args: unknown): T {
@@ -66,25 +71,25 @@ export const TOOLS: Record<string, ToolDef> = {
   "hris.upsert_employee": {
     name: "hris.upsert_employee",
     integration: "HRIS",
+    label: "Update employee record",
     purpose: "Create or update the employee record in the HRIS (Shapes).",
     schema: upsertSchema,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, ...emp } = parseArgs(upsertSchema, args);
       store.upsertEmployee(tenant, emp);
-      store.audit({
-        tenant,
-        capability: "hris.upsert_employee",
-        target: emp.id,
-        summary: `upserted employee ${emp.name} (${emp.role})`,
-      });
       return { ok: true, employee: emp };
     },
+    summarize: (args) => ({
+      target: String(args.name ?? args.id ?? "—"),
+      summary: `Upserted employee ${args.name} (${args.role})`,
+    }),
   },
 
   "ats.get_contract": {
     name: "ats.get_contract",
     integration: "ATS",
+    label: "Get signed contract",
     purpose: "Retrieve the signed contract for a candidate from the ATS (Comeet).",
     schema: getContractSchema,
     sideEffectful: false,
@@ -92,19 +97,21 @@ export const TOOLS: Record<string, ToolDef> = {
       const { tenant, candidateId } = parseArgs(getContractSchema, args);
       const contract = store.getContract(tenant, candidateId);
       if (!contract) throw new Error(`no contract found for candidate ${candidateId}`);
-      store.audit({
-        tenant,
-        capability: "ats.get_contract",
-        target: candidateId,
-        summary: `retrieved signed contract for ${contract.name}`,
-      });
       return { ok: true, contract };
+    },
+    summarize: (_args, result) => {
+      const c = (result.contract as { name?: string } | undefined);
+      return {
+        target: c?.name ?? "—",
+        summary: `Retrieved signed contract for ${c?.name ?? "candidate"}`,
+      };
     },
   },
 
   "hiring_manager.ask": {
     name: "hiring_manager.ask",
     integration: "Channels",
+    label: "Ask hiring manager",
     purpose: "Ask the hiring manager a question and get their answer (the collect-info step).",
     schema: askSchema,
     sideEffectful: true,
@@ -112,57 +119,61 @@ export const TOOLS: Record<string, ToolDef> = {
       const { tenant, managerId, question } = parseArgs(askSchema, args);
       const mgr = store.getManager(tenant, managerId);
       if (!mgr) throw new Error(`no manager found: ${managerId}`);
-      store.audit({
-        tenant,
-        capability: "hiring_manager.ask",
-        target: managerId,
-        summary: `asked ${mgr.name}: ${question.slice(0, 60)}`,
-      });
-      return { ok: true, answer: mgr.cannedAnswer };
+      return { ok: true, answer: mgr.cannedAnswer, manager: { id: mgr.id, name: mgr.name } };
+    },
+    summarize: (args, result) => {
+      const mgr = (result.manager as { name?: string } | undefined);
+      const q = String(args.question ?? "");
+      return {
+        target: mgr?.name ?? String(args.managerId ?? "—"),
+        summary: `Asked ${mgr?.name ?? "manager"}: ${q.slice(0, 60)}`,
+      };
     },
   },
 
   "teams.add_member": {
     name: "teams.add_member",
     integration: "Channels",
+    label: "Add to team",
     purpose: "Add the new hire to one or more Microsoft Teams.",
     schema: teamsSchema,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, employeeId, teams } = parseArgs(teamsSchema, args);
       store.addMembership({ tenant, employeeId, teams });
-      store.audit({
-        tenant,
-        capability: "teams.add_member",
-        target: employeeId,
-        summary: `added to teams: ${teams.join(", ")}`,
-      });
       return { ok: true, employeeId, teams };
     },
+    summarize: (args) => ({
+      target: String(args.employeeId ?? "—"),
+      summary: `Added to teams: ${(args.teams as string[] | undefined)?.join(", ") ?? "—"}`,
+    }),
   },
 
   "calendar.create_invite": {
     name: "calendar.create_invite",
     integration: "Calendar",
+    label: "Schedule invite",
     purpose: "Schedule a calendar invite (logistics only — title, date, attendees, location).",
     schema: inviteSchema,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, ...rest } = parseArgs(inviteSchema, args);
       const invite = store.addInvite(tenant, rest);
-      store.audit({
-        tenant,
-        capability: "calendar.create_invite",
-        target: invite.id,
-        summary: `scheduled "${rest.title}" on ${rest.date}`,
-      });
       return { ok: true, invite };
+    },
+    summarize: (args, result) => {
+      const inv = (result.invite as { id?: string } | undefined);
+      return {
+        target: inv?.id ?? String(args.title ?? "—"),
+        summary: `Scheduled "${args.title}" on ${args.date}`,
+      };
     },
   },
 
   "content.get_branding": {
     name: "content.get_branding",
     integration: "Content",
+    label: "Get branding pack",
     purpose: "Fetch Papaya branding content (company story, culture video, welcome note).",
     schema: brandingSchema,
     sideEffectful: false,
@@ -170,33 +181,30 @@ export const TOOLS: Record<string, ToolDef> = {
       const { tenant } = parseArgs(brandingSchema, args);
       const branding = store.getBranding(tenant);
       if (!branding) throw new Error("no branding configured");
-      store.audit({
-        tenant,
-        capability: "content.get_branding",
-        target: tenant,
-        summary: "retrieved branding pack",
-      });
       return { ok: true, branding };
     },
+    summarize: (args) => ({
+      target: String(args.tenant ?? "—"),
+      summary: "Retrieved branding pack",
+    }),
   },
 
   "channel.send_message": {
     name: "channel.send_message",
     integration: "Channels",
+    label: "Send message",
     purpose: "Send a warm message to a recipient over a channel (email/teams/slack); recorded for the Messages view.",
     schema: sendSchema,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, to, role, channel, body } = parseArgs(sendSchema, args);
       const message = store.addMessage({ tenant, from: "agent", to, role, channel, body });
-      store.audit({
-        tenant,
-        capability: "channel.send_message",
-        target: to,
-        summary: `sent ${channel} message to ${to}`,
-      });
       return { ok: true, message };
     },
+    summarize: (args) => ({
+      target: String(args.to ?? "—"),
+      summary: `Sent ${args.channel} message to ${args.to}`,
+    }),
   },
 };
 
@@ -204,10 +212,56 @@ export function toolCatalog(): { name: string; integration: string; purpose: str
   return Object.values(TOOLS).map(({ name, integration, purpose }) => ({ name, integration, purpose }));
 }
 
-export async function executeTool(store: InMemoryStore, name: string, args: unknown): Promise<ToolResult> {
+export interface ExecuteToolOpts {
+  /** the execution that owns this tool call (for grouping in the audit) */
+  runId?: string;
+  /** who/what initiated the call. defaults to "pixush" (the agent). */
+  actor?: AuditActor;
+}
+
+export async function executeTool(
+  store: InMemoryStore,
+  name: string,
+  args: unknown,
+  opts: ExecuteToolOpts = {},
+): Promise<ToolResult> {
   const tool = TOOLS[name];
   if (!tool) throw new Error(`unknown tool: ${name}`);
-  return tool.run(store, args);
+
+  const tenant = ((args as { tenant?: string })?.tenant) ?? "papaya";
+  const actor: AuditActor = opts.actor ?? "pixush";
+  const start = Date.now();
+  let result: ToolResult | undefined;
+  let error: unknown;
+
+  try {
+    result = await tool.run(store, args);
+    return result;
+  } catch (e) {
+    error = e;
+    throw e;
+  } finally {
+    const durationMs = Date.now() - start;
+    const summarized = result
+      ? tool.summarize(args as Record<string, unknown>, result)
+      : { target: "—", summary: (error as Error)?.message ?? "Action failed" };
+
+    const entry: Omit<AuditEntry, "id" | "ts"> = {
+      tenant,
+      capability: tool.name,
+      label: tool.label,
+      integration: tool.integration,
+      target: summarized.target,
+      summary: summarized.summary,
+      actor,
+      runId: opts.runId,
+      status: error ? "error" : "success",
+      durationMs,
+      inputs: args,
+      outputs: error ? { error: (error as Error)?.message } : result,
+    };
+    store.audit(entry);
+  }
 }
 
 export interface CapabilityField { name: string; required: boolean; system: boolean; }

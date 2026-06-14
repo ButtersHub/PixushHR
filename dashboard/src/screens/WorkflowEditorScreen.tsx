@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Card, CardHeader, Button, Select, Input, FlowNode, BranchConnector, BindingPill, ConnectorIcon, LoadingState, ErrorState } from '../ui/index';
+import { Card, CardHeader, Button, Dropdown, Input, FlowNode, BranchConnector, BindingPill, ConnectorIcon, LoadingState, ErrorState } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
 
@@ -148,27 +148,32 @@ function Inspector({ node, caps, onUpdate, onAddAfter }: InspectorProps) {
       <div className="p-4 space-y-3 text-[13px]">
         {node.kind === 'action' ? (
           <>
-            <label className="block">
+            <div className="block">
               <span className="text-[12px] text-[--text-secondary] flex items-center gap-1.5 mb-1">
                 <ConnectorIcon name={node.capability} kind="capability" size={14} /> Capability
               </span>
-              <Select
+              <Dropdown
                 value={node.capability}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onUpdate(node.id, { capability: e.target.value, input: {} } as Partial<Node>)}
+                onChange={(v) => onUpdate(node.id, { capability: v, input: {} } as Partial<Node>)}
                 options={caps.map((c) => ({ value: c.name, label: c.name }))}
+                className="w-full"
               />
-            </label>
-            <label className="block">
+            </div>
+            <div className="block">
               <span className="text-[12px] text-[--text-secondary] mb-1 block">Audience</span>
-              <Select
+              <Dropdown
                 value={node.audience ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                  const v = e.target.value;
-                  onUpdate(node.id, { audience: v === '' ? undefined : v } as Partial<Node>);
-                }}
-                options={[{ value: '', label: '—' }, { value: 'employee', label: 'employee' }, { value: 'manager', label: 'manager' }, { value: 'hr', label: 'hr' }, { value: 'team', label: 'team' }]}
+                onChange={(v) => onUpdate(node.id, { audience: v === '' ? undefined : v } as Partial<Node>)}
+                options={[
+                  { value: '', label: 'No audience' },
+                  { value: 'employee', label: 'Employee' },
+                  { value: 'manager', label: 'Manager' },
+                  { value: 'hr', label: 'HR' },
+                  { value: 'team', label: 'Team' },
+                ]}
+                className="w-full"
               />
-            </label>
+            </div>
             <div>
               <span className="text-[12px] text-[--text-secondary] mb-1.5 block">Inputs</span>
               <div className="space-y-1.5">

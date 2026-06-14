@@ -175,7 +175,7 @@ function Segmented({
               'inline-flex items-center gap-1.5 rounded-lg font-medium transition-all duration-100',
               pad,
               active
-                ? (o.activeClass ?? 'bg-[--surface-card] text-[--text-primary] shadow-[--shadow-sm]')
+                ? (o.activeClass ?? 'bg-[--surface-card] text-[--text-primary] [box-shadow:var(--shadow-sm)]')
                 : 'text-[--text-secondary] hover:text-[--text-primary]',
             ].join(' ')}
             aria-pressed={active}
@@ -202,8 +202,8 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
     <div
       className={[
         'group relative flex flex-col overflow-hidden rounded-xl border border-[--border-default] bg-[--surface-card] p-4',
-        'shadow-[--shadow-xs] transition-all duration-150',
-        'hover:-translate-y-[2px] hover:shadow-[--shadow-md]',
+        '[box-shadow:var(--shadow-xs)] transition-all duration-150',
+        'hover:-translate-y-[2px] hover:[box-shadow:var(--shadow-md)]',
         c.installed ? 'hover:border-[--papaya-200]' : 'hover:border-[--border-strong]',
       ].join(' ')}
     >
@@ -211,7 +211,7 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
       {live && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-gradient-to-b from-[--green-500] to-[--green-600]" aria-hidden />}
 
       <div className="flex items-start gap-3">
-        <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-[--surface-sunken] shadow-[--shadow-xs] ring-1 ring-black/[0.06]">
+        <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-[--surface-sunken] [box-shadow:var(--shadow-xs)] ring-1 ring-black/[0.06]">
           <ConnectorIcon name={c.icon} kind="logo" size={24} />
         </div>
         <div className="min-w-0 flex-1">
@@ -248,7 +248,7 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
         ) : (
           <button
             onClick={onInstall}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[--papaya-500] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[--shadow-sm] transition-all hover:bg-[--papaya-600] active:scale-[0.97]"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[--papaya-500] px-3 py-1.5 text-[11px] font-semibold text-white [box-shadow:var(--shadow-sm)] transition-all hover:bg-[--papaya-600] active:scale-[0.97]"
           >
             <Plus size={13} /> Install
           </button>
@@ -317,7 +317,7 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
                 className={[
                   'group relative flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-all duration-100',
                   active
-                    ? 'border-[--papaya-200] bg-[--papaya-50] shadow-[--shadow-xs]'
+                    ? 'border-[--papaya-200] bg-[--papaya-50] [box-shadow:var(--shadow-xs)]'
                     : 'border-transparent hover:bg-[--surface-hover]',
                 ].join(' ')}
               >
@@ -345,7 +345,7 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
         <div className="relative border-b border-[--border-default] bg-gradient-to-br from-[--surface-sunken] to-[--surface-card] p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-xl bg-[--surface-sunken] ring-1 ring-[--border-default] shadow-[--shadow-sm]">
+              <div className="grid h-12 w-12 place-items-center rounded-xl bg-[--surface-sunken] ring-1 ring-[--border-default] [box-shadow:var(--shadow-sm)]">
                 <ConnectorIcon name={current.icon} kind="logo" size={26} />
               </div>
               <div>
@@ -384,8 +384,8 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
                   value={current.mode}
                   onChange={(v) => onConfig(current.id, { mode: v })}
                   options={[
-                    { value: 'mock', label: 'Mock', icon: <FlaskConical size={12} />, activeClass: 'bg-[--status-mock-bg] text-[--status-mock-text] shadow-[--shadow-xs]' },
-                    { value: 'prod', label: 'Prod', icon: <Cloud size={12} />, activeClass: 'bg-[--status-real-bg] text-[--status-real-text] shadow-[--shadow-xs]' },
+                    { value: 'mock', label: 'Mock', icon: <FlaskConical size={12} />, activeClass: 'bg-[--status-mock-bg] text-[--status-mock-text] [box-shadow:var(--shadow-xs)]' },
+                    { value: 'prod', label: 'Prod', icon: <Cloud size={12} />, activeClass: 'bg-[--status-real-bg] text-[--status-real-text] [box-shadow:var(--shadow-xs)]' },
                   ]}
                 />
               </Row>

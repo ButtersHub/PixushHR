@@ -30,6 +30,12 @@
   --transition-all:        all var(--duration-normal) var(--ease-standard);
 }
 
+/* ── Reusable keyframes ─────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
 /* Respect reduced-motion: only instant and essential motion */
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -40,4 +46,5 @@
     --duration-slow:     0ms; /* @kind other */
     --duration-slower:   0ms; /* @kind other */
   }
+  @keyframes fade-in { from {opacity:1} to {opacity:1} }
 }

@@ -34,7 +34,7 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
       ];
 
       const gen = startGeneration("hermes-chat", { input: messages });
-      const res = await hermes.chat(messages);
+      const res = await hermes.chat(messages, { runId: requestId });
       gen?.update({
         output: res.content,
         model: res.model,

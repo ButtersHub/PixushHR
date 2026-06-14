@@ -67,12 +67,35 @@ export interface TeamMembership {
   teams: string[];
 }
 
+export type AuditActor = "pixush" | "user" | "trigger" | "system";
+export type AuditStatus = "success" | "error" | "escalated";
+
 export interface AuditEntry {
-  ts: string;
+  id: string;             // stable identifier (random uuid)
+  ts: string;             // ISO timestamp
   tenant: string;
+  /** stable capability id (e.g. "hris.upsert_employee" or "integrations.install") */
   capability: string;
+  /** friendly display label (e.g. "Update employee record") */
+  label?: string;
+  /** which connector/system this action affected (role-port id, e.g. "HRIS", "Channels") */
+  integration?: string;
+  /** the affected entity — an employee name, a recipient, a connector id */
   target: string;
+  /** one-line description of what happened */
   summary: string;
+  /** who/what initiated the action */
+  actor: AuditActor;
+  /** the execution this action belongs to (groups all actions of a single agent run) */
+  runId?: string;
+  /** outcome */
+  status: AuditStatus;
+  /** elapsed time in ms */
+  durationMs?: number;
+  /** raw inputs passed to the action (synthetic data, safe to surface) */
+  inputs?: unknown;
+  /** raw output the action returned, or the error message */
+  outputs?: unknown;
 }
 
 export class InMemoryStore {
@@ -166,8 +189,10 @@ export class InMemoryStore {
     return this.memberships.filter((m) => m.tenant === tenant);
   }
 
-  audit(entry: Omit<AuditEntry, "ts">): void {
-    this.auditLog.push({ ...entry, ts: new Date().toISOString() });
+  audit(entry: Omit<AuditEntry, "id" | "ts">): AuditEntry {
+    const full: AuditEntry = { ...entry, id: randomUUID(), ts: new Date().toISOString() };
+    this.auditLog.push(full);
+    return full;
   }
 
   getAudit(tenant: string): AuditEntry[] {

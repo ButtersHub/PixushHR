@@ -9,8 +9,14 @@ export interface ChatResult {
   usage?: { input?: number; output?: number };
 }
 
+/** Per-request metadata the orchestrator threads through to the agent. */
+export interface ChatOpts {
+  /** correlation id for this run — flows down to /tools/execute so audit entries can be grouped */
+  runId?: string;
+}
+
 export interface HermesClient {
-  chat(messages: ChatMessage[]): Promise<ChatResult>;
+  chat(messages: ChatMessage[], opts?: ChatOpts): Promise<ChatResult>;
 }
 
 export class HttpHermesClient implements HermesClient {
@@ -20,7 +26,7 @@ export class HttpHermesClient implements HermesClient {
     private model = "hermes-agent",
   ) {}
 
-  async chat(messages: ChatMessage[]): Promise<ChatResult> {
+  async chat(messages: ChatMessage[], _opts?: ChatOpts): Promise<ChatResult> {
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },

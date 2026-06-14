@@ -110,6 +110,13 @@ export class InMemoryStore {
   private auditLog: AuditEntry[] = [];
   private connectorStates = new Map<string, ConnectorState>();
   private workflows = new Map<string, WorkflowDefinition>();
+  /**
+   * Stack of in-flight /execute runs per tenant. When a Hermes tool callback hits
+   * /tools/execute without an explicit runId (the real hris-tool skill doesn't forward it),
+   * we look up the most recently-started active run for the tenant and inherit its runId —
+   * so every action of one agent run shares a single runId in the audit log.
+   */
+  private activeRuns: { tenant: string; runId: string; startedAt: number }[] = [];
 
   private key(tenant: string, kind: string, id: string): string {
     return `${tenant}#${kind}#${id}`;
@@ -229,6 +236,27 @@ export class InMemoryStore {
       .map(([, v]) => v);
   }
 
+  /** Record that a /execute run for `tenant` has started. Call popActiveRun in a finally. */
+  pushActiveRun(tenant: string, runId: string): void {
+    this.activeRuns.push({ tenant, runId, startedAt: Date.now() });
+  }
+
+  popActiveRun(tenant: string, runId: string): void {
+    const idx = this.activeRuns.findIndex((r) => r.tenant === tenant && r.runId === runId);
+    if (idx >= 0) this.activeRuns.splice(idx, 1);
+  }
+
+  /**
+   * Return the runId of the most-recently-started in-flight run for `tenant`, or undefined.
+   * Used by /tools/execute when the caller (real Hermes) didn't forward the runId itself.
+   */
+  currentActiveRunId(tenant: string): string | undefined {
+    for (let i = this.activeRuns.length - 1; i >= 0; i--) {
+      if (this.activeRuns[i].tenant === tenant) return this.activeRuns[i].runId;
+    }
+    return undefined;
+  }
+
   reset(): void {
     this.employees.clear();
     this.contracts.clear();
@@ -241,5 +269,6 @@ export class InMemoryStore {
     this.auditLog = [];
     this.connectorStates.clear();
     this.workflows.clear();
+    this.activeRuns = [];
   }
 }

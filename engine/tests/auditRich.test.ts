@@ -93,4 +93,78 @@ describe("audit — enriched shape", () => {
       await a.close();
     }
   });
+
+  it("/tools/execute inherits the in-flight runId when the caller didn't forward one (real Hermes case)", async () => {
+    // Simulates the real Hermes hris-tool skill: it makes a fresh HTTP POST to /tools/execute
+    // without forwarding `runId`. The engine should still attribute the call to the active run.
+    const PORT = 4102;
+    const store = new InMemoryStore();
+    seedFixtures(store);
+
+    // A "naive" hermes stub that calls /tools/execute WITHOUT runId
+    class NaiveHermes {
+      constructor(private engineUrl: string) {}
+      async chat() {
+        await fetch(`${this.engineUrl}/tools/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "ats.get_contract",
+            args: { tenant: "papaya", candidateId: "c1" },
+            // intentionally NO runId
+          }),
+        });
+        return { content: "ok" };
+      }
+    }
+
+    const a = buildApp({ store, hermes: new NaiveHermes(`http://127.0.0.1:${PORT}`) as any });
+    await a.listen({ port: PORT, host: "127.0.0.1" });
+    try {
+      await fetch(`http://127.0.0.1:${PORT}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task: "Onboard Maya Cohen", context: { tenant: "papaya" } }),
+      });
+      const log = store.getAudit("papaya");
+      const trigger = log.find((e) => e.actor === "trigger");
+      const action = log.find((e) => e.actor === "pixush" && e.capability === "ats.get_contract");
+      expect(trigger).toBeTruthy();
+      expect(action).toBeTruthy();
+      // even though the naive caller didn't forward runId, the engine attributed it to the run
+      expect(action!.runId).toBe(trigger!.runId);
+    } finally {
+      await a.close();
+    }
+  });
+
+  it("popActiveRun clears the run after /execute completes so a stray /tools/execute does NOT inherit", async () => {
+    const PORT = 4103;
+    const store = new InMemoryStore();
+    seedFixtures(store);
+    class NoopHermes {
+      async chat() { return { content: "ok" }; }
+    }
+    const a = buildApp({ store, hermes: new NoopHermes() as any });
+    await a.listen({ port: PORT, host: "127.0.0.1" });
+    try {
+      // run completes; activeRuns should be empty
+      await fetch(`http://127.0.0.1:${PORT}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task: "first run", context: { tenant: "papaya" } }),
+      });
+      // a stray tool call AFTER the run finished should NOT inherit the prior runId
+      await fetch(`http://127.0.0.1:${PORT}/tools/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "ats.get_contract", args: { tenant: "papaya", candidateId: "c1" } }),
+      });
+      const log = store.getAudit("papaya");
+      const stray = log.find((e) => e.actor === "pixush" && e.capability === "ats.get_contract");
+      expect(stray!.runId).toBeUndefined();
+    } finally {
+      await a.close();
+    }
+  });
 });

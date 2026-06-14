@@ -69,10 +69,19 @@ export function AuditScreen() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
+  // Cheap signature of the current audit set — used to skip re-rendering when nothing changed.
+  // Counts entries + the newest id+ts; covers append, delete, replace, and reset.
+  function signatureOf(list: AuditEntry[]): string {
+    if (list.length === 0) return '0:';
+    const head = list[0];                          // newest (we keep audit sorted DESC)
+    const tail = list[list.length - 1];            // oldest
+    return `${list.length}:${head.id}:${head.ts}:${tail.id}`;
+  }
+
   /**
    * fetch the audit; in `background` mode we don't flip the loading state — so the screen
-   * doesn't flicker while polling. errors during background loads are silent (the next attempt
-   * will surface them if persistent).
+   * doesn't flicker while polling. We also short-circuit when the data hasn't changed: no
+   * setState, no useMemo recomputation, no re-render — keeps the tab cheap when nothing's happening.
    */
   const load = useCallback(async (mode: 'foreground' | 'background' = 'foreground') => {
     if (mode === 'foreground') {
@@ -83,10 +92,12 @@ export function AuditScreen() {
       const r = await fetch(`${ENGINE}/audit?tenant=papaya`);
       if (!r.ok) throw new Error(`Engine returned ${r.status}`);
       const data = (await r.json()) as AuditEntry[];
-      // newest first
-      setAudit([...data].sort((a, b) => (b.ts > a.ts ? 1 : -1)));
+      const sorted = [...data].sort((a, b) => (b.ts > a.ts ? 1 : -1));     // newest first
+
+      // Skip setState when content is unchanged (the common case during steady polling).
+      setAudit((prev) => signatureOf(prev) === signatureOf(sorted) ? prev : sorted);
       setLastUpdated(Date.now());
-      setState('done');
+      if (mode === 'foreground') setState('done');
     } catch (err) {
       if (mode === 'foreground') {
         setErrorMsg(err instanceof Error ? err.message : 'Unknown error');
@@ -98,28 +109,36 @@ export function AuditScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-refresh: poll every 2s while enabled. Pauses automatically when the tab is hidden,
-  // and resumes (with an immediate refresh) when it becomes visible again.
+  // Auto-refresh: poll every 3s while enabled AND the tab is visible.
+  //
+  // - When the tab is hidden (`visibilitychange` → 'hidden'), we clear the interval entirely
+  //   so we don't burn CPU/network in the background. We do a single fetch on becoming visible
+  //   again so the audit catches up instantly.
+  // - When the dataset hasn't changed, `load()` short-circuits the setState (see signatureOf),
+  //   so steady-state polling is effectively a tiny fetch + a string compare and nothing else.
   useEffect(() => {
     if (!autoRefresh) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    function schedule() {
-      timer = setTimeout(async () => {
-        if (cancelled) return;
-        if (document.visibilityState === 'visible') await load('background');
-        schedule();
-      }, 2000);
+    let interval: ReturnType<typeof setInterval> | undefined;
+    function start() {
+      if (interval) return;
+      interval = setInterval(() => { void load('background'); }, 3000);
     }
-    function onVisible() {
-      if (document.visibilityState === 'visible') void load('background');
+    function stop() {
+      if (interval) { clearInterval(interval); interval = undefined; }
     }
-    schedule();
-    document.addEventListener('visibilitychange', onVisible);
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        void load('background');                                       // catch up immediately
+        start();
+      } else {
+        stop();
+      }
+    }
+    if (document.visibilityState === 'visible') start();
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisible);
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [autoRefresh, load]);
 

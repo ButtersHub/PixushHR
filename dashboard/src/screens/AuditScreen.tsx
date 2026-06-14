@@ -459,7 +459,7 @@ function Row({ entry: e, selected, onSelect, inFlow, step, relativeMs, compact }
       </span>
 
       {/* col 7: actor pill */}
-      <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
+      <span className={`inline-flex min-w-[62px] items-center justify-start gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
         <ActorIcon size={13} /> {actor.label}
       </span>
 
@@ -510,7 +510,7 @@ function TriggerRow({ entry: e, selected, onSelect, compact }: {
       <span className="truncate text-[12px] text-[--text-secondary]">{e.target}</span>
       {!compact && <span className="truncate text-[12px] text-[--text-tertiary]">{e.summary}</span>}
       <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]">{typeof e.durationMs === 'number' ? `${e.durationMs}ms` : '—'}</span>
-      <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
+      <span className={`inline-flex min-w-[62px] items-center justify-start gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
         <ActorIcon size={13} /> {actor.label}
       </span>
       <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]">
@@ -588,7 +588,7 @@ function RawPanel({ entry: e, onClose }: { entry: AuditEntry; onClose: () => voi
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.pill}`}>
             <StatusIcon size={11} /> {status.label}
           </span>
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
+          <span className={`inline-flex min-w-[72px] items-center justify-start gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
             <ActorIcon size={15} /> {actor.label}
           </span>
           {e.integration && (

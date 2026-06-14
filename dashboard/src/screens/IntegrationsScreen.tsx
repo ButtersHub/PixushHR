@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Check, Trash2, Wrench, Database, Settings2, FlaskConical, Cloud,
   Users, FileText, MessagesSquare, KanbanSquare, Calendar as CalendarIcon, Palette,
-  Zap, ArrowRight,
+  Zap, ArrowRight, Webhook,
 } from 'lucide-react';
 import { Card, PageHeader, ConnectorIcon, Toggle, Table, Badge, LoadingState, ErrorState, EmptyState } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
 
 interface Capability { name: string; label: string; description: string; wired?: boolean }
+interface Trigger { name: string; label: string; description: string }
 
 interface Connector {
   id: string; name: string; role: string; description: string; icon: string;
@@ -16,6 +17,7 @@ interface Connector {
   config: { mock: { failNext?: boolean; latencyMs?: number; seed?: string }; prod: { baseUrl?: string; authRef?: string; ids?: string } };
   tools: string[];
   capabilities: Capability[];
+  triggers?: Trigger[];
 }
 
 const ROLES = ['HRIS', 'ATS', 'Channels', 'TaskBoard', 'Calendar', 'Content'];
@@ -24,7 +26,7 @@ const ROLE_META: Record<string, { label: string; icon: typeof Users; blurb: stri
   HRIS: { label: 'HRIS', icon: Users, blurb: 'System of record for people' },
   ATS: { label: 'ATS', icon: FileText, blurb: 'Hiring & signed contracts' },
   Channels: { label: 'Channels', icon: MessagesSquare, blurb: 'How the agent reaches people' },
-  TaskBoard: { label: 'Task board', icon: KanbanSquare, blurb: 'Provisioning & checklists' },
+  TaskBoard: { label: 'Project management', icon: KanbanSquare, blurb: 'Provisioning & task tracking' },
   Calendar: { label: 'Calendar', icon: CalendarIcon, blurb: 'Scheduling & invites' },
   Content: { label: 'Content', icon: Palette, blurb: 'Branding & culture material' },
 };
@@ -205,7 +207,7 @@ function Segmented({
             {o.badge !== undefined && (
               <span className={[
                 'ml-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
-                active ? 'bg-[--papaya-100] text-[--papaya-700]' : 'bg-[--neutral-200] text-[--text-secondary]',
+                active ? 'bg-[--green-100] text-[--green-700]' : 'bg-[--neutral-200] text-[--text-secondary]',
               ].join(' ')}>{o.badge}</span>
             )}
           </button>
@@ -290,11 +292,11 @@ interface InstalledPanelProps {
 }
 
 function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onUninstall, onBrowse }: InstalledPanelProps) {
-  const [subtab, setSubtab] = useState<'general' | 'mock' | 'prod' | 'data' | 'tools'>('general');
+  const [subtab, setSubtab] = useState<'general' | 'mocked-data' | 'prod' | 'actions' | 'triggers'>('general');
   const [data, setData] = useState<Record<string, unknown>[]>([]);
 
   useEffect(() => {
-    if (subtab === 'data' && current) {
+    if (subtab === 'mocked-data' && current) {
       fetch(`${ENGINE}/integrations/${current.id}/data?tenant=papaya`).then((r) => r.json()).then(setData).catch(() => setData([]));
     }
   }, [subtab, current]);
@@ -318,10 +320,10 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
 
   const SUBTABS: { value: typeof subtab; label: string; icon: React.ReactNode }[] = [
     { value: 'general', label: 'General', icon: <Settings2 size={13} /> },
-    { value: 'mock', label: 'Mock', icon: <FlaskConical size={13} /> },
+    { value: 'mocked-data', label: 'Mocked Data', icon: <FlaskConical size={13} /> },
     { value: 'prod', label: 'Prod', icon: <Cloud size={13} /> },
-    { value: 'data', label: 'Data', icon: <Database size={13} /> },
-    { value: 'tools', label: 'Tools', icon: <Wrench size={13} /> },
+    { value: 'actions', label: 'Actions', icon: <Wrench size={13} /> },
+    { value: 'triggers', label: 'Triggers', icon: <Webhook size={13} /> },
   ];
 
   return (
@@ -351,8 +353,8 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
                 </div>
                 <span className={[
                   'h-2 w-2 flex-shrink-0 rounded-full',
-                  c.enabled ? (c.mode === 'prod' ? 'bg-[--status-real-base]' : 'bg-[--status-mock-base]') : 'bg-[--status-off-base]',
-                ].join(' ')} title={c.enabled ? c.mode : 'off'} />
+                  c.enabled ? 'bg-[--green-500]' : 'bg-[--status-off-base]',
+                ].join(' ')} title={c.enabled ? 'connected' : 'off'} />
               </button>
             </li>
           );
@@ -409,7 +411,7 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
                   ]}
                 />
               </Row>
-              <Row label="Enabled" hint="Disabled connectors hide their tools from the agent.">
+              <Row label="Enabled" hint="Disabled connectors hide their actions from Pixush.">
                 <Toggle checked={current.enabled} onChange={(v: boolean) => onEnable(current.id, v)} />
               </Row>
               <div className="border-t border-[--border-default] pt-3">
@@ -423,8 +425,8 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
             </div>
           )}
 
-          {subtab === 'mock' && (
-            <div className="space-y-3">
+          {subtab === 'mocked-data' && (
+            <div className="space-y-4">
               <div className="rounded-xl border border-[--amber-200] bg-[--amber-50] p-3">
                 <Row
                   label="Fail next call"
@@ -434,10 +436,19 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
                   <Toggle checked={!!current.config.mock.failNext} onChange={(v: boolean) => onConfig(current.id, { mock: { failNext: v } })} />
                 </Row>
               </div>
-              <p className="text-[12px] leading-relaxed text-[--text-tertiary]">
-                Mock adapters are stateful simulators over synthetic data — deterministic, idempotent,
-                and fully audited. Latency and seed controls would live here too.
-              </p>
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[--text-tertiary]">
+                  <Database size={13} /> Mocked records
+                </p>
+                <Table
+                  columns={Object.keys(data[0] ?? { record: '' }).slice(0, 5).map((k) => ({ key: k, label: k }))}
+                  rows={data as Record<string, unknown>[]}
+                  empty="No records yet — run a scenario to populate this system."
+                />
+                <p className="mt-2 text-[11px] leading-relaxed text-[--text-tertiary]">
+                  Mock adapters are stateful simulators over synthetic data — deterministic, idempotent, and fully audited.
+                </p>
+              </div>
             </div>
           )}
 
@@ -453,40 +464,72 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
             </div>
           )}
 
-          {subtab === 'data' && (
-            <Table
-              columns={Object.keys(data[0] ?? { record: '' }).slice(0, 5).map((k) => ({ key: k, label: k }))}
-              rows={data as Record<string, unknown>[]}
-              empty="No records yet — run a scenario to populate this system."
-            />
+          {subtab === 'actions' && (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 rounded-lg border border-[--papaya-100] bg-[--papaya-50] px-3 py-2">
+                <Zap size={14} className="mt-0.5 flex-shrink-0 text-[--papaya-600]" />
+                <p className="text-[12px] leading-relaxed text-[--text-secondary]">
+                  These are the actions Pixush can invoke on this system while running a workflow.
+                  Actions marked <span className="font-semibold text-[--green-700]">Live</span> work now; the rest map the system's wider API.
+                </p>
+              </div>
+              <ul className="space-y-1.5">
+                {current.capabilities.length === 0 && (
+                  <li className="rounded-lg border border-dashed border-[--border-default] p-3 text-center text-[12px] text-[--text-tertiary]">
+                    This connector exposes no actions.
+                  </li>
+                )}
+                {current.capabilities.map((cap) => (
+                  <li key={cap.name} className="flex items-center gap-3 rounded-lg border border-[--border-default] bg-[--surface-card] px-3 py-2 transition-colors hover:bg-[--surface-hover]">
+                    <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-[--border-default] bg-[--surface-sunken]">
+                      <ConnectorIcon name={current.icon} kind="logo" size={15} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium leading-tight text-[--text-primary]">{cap.label}</p>
+                      <p className="truncate text-[11px] text-[--text-tertiary]">{cap.description}</p>
+                    </div>
+                    {cap.wired ? (
+                      current.enabled
+                        ? <span className="ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-[--green-50] px-1.5 py-0.5 text-[10px] font-semibold text-[--green-700]"><Check size={10} /> Live</span>
+                        : <span className="ml-auto flex-shrink-0 rounded-full bg-[--surface-sunken] px-1.5 py-0.5 text-[10px] font-semibold text-[--text-tertiary]">Hidden</span>
+                    ) : (
+                      <span className="ml-auto flex-shrink-0 rounded-full border border-[--border-default] px-1.5 py-0.5 text-[10px] font-medium text-[--text-tertiary]">Available</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
-          {subtab === 'tools' && (
-            <ul className="space-y-1.5">
-              {current.capabilities.length === 0 && (
-                <li className="rounded-lg border border-dashed border-[--border-default] p-3 text-center text-[12px] text-[--text-tertiary]">
-                  This connector exposes no tools.
-                </li>
-              )}
-              {current.capabilities.map((cap) => (
-                <li key={cap.name} className="flex items-center gap-3 rounded-lg border border-[--border-default] bg-[--surface-card] px-3 py-2 transition-colors hover:bg-[--surface-hover]">
-                  <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-[--border-default] bg-[--surface-sunken]">
-                    <ConnectorIcon name={current.icon} kind="logo" size={15} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium leading-tight text-[--text-primary]">{cap.label}</p>
-                    <p className="truncate text-[11px] text-[--text-tertiary]">{cap.description}</p>
-                  </div>
-                  {cap.wired ? (
-                    current.enabled
-                      ? <span className="ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-[--green-50] px-1.5 py-0.5 text-[10px] font-semibold text-[--green-700]"><Check size={10} /> Live</span>
-                      : <span className="ml-auto flex-shrink-0 rounded-full bg-[--surface-sunken] px-1.5 py-0.5 text-[10px] font-semibold text-[--text-tertiary]">Hidden</span>
-                  ) : (
-                    <span className="ml-auto flex-shrink-0 rounded-full border border-[--border-default] px-1.5 py-0.5 text-[10px] font-medium text-[--text-tertiary]">Available</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+          {subtab === 'triggers' && (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2 rounded-lg border border-[--blue-100] bg-[--blue-50] px-3 py-2">
+                <Webhook size={14} className="mt-0.5 flex-shrink-0 text-[--blue-600]" />
+                <p className="text-[12px] leading-relaxed text-[--text-secondary]">
+                  Triggers are inbound webhooks from this system that can start a Pixush workflow.
+                  They're modelled here; wiring them to live webhooks is a later step.
+                </p>
+              </div>
+              <ul className="space-y-1.5">
+                {(current.triggers ?? []).length === 0 && (
+                  <li className="rounded-lg border border-dashed border-[--border-default] p-3 text-center text-[12px] text-[--text-tertiary]">
+                    No triggers for this system yet.
+                  </li>
+                )}
+                {(current.triggers ?? []).map((t) => (
+                  <li key={t.name} className="flex items-center gap-3 rounded-lg border border-[--border-default] bg-[--surface-card] px-3 py-2 transition-colors hover:bg-[--surface-hover]">
+                    <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-[--border-default] bg-[--surface-sunken] text-[--blue-600]">
+                      <Webhook size={14} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium leading-tight text-[--text-primary]">{t.label}</p>
+                      <p className="truncate text-[11px] text-[--text-tertiary]">{t.description}</p>
+                    </div>
+                    <span className="ml-auto flex-shrink-0 rounded-full border border-[--border-default] px-1.5 py-0.5 font-mono text-[10px] text-[--text-tertiary]">{t.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       </Card>

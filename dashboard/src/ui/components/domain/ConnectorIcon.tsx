@@ -1,19 +1,22 @@
 import { Calendar, FileText, Mail, Palette, Plug } from 'lucide-react';
 import type { ComponentType } from 'react';
-import shapes from '../../assets/connectors/shapes.png';
+import shapes from '../../assets/connectors/shapes.webp';
 import comeet from '../../assets/connectors/comeet.png';
-import teams from '../../assets/connectors/teams.png';
-import slack from '../../assets/connectors/slack.jpeg';
-import trello from '../../assets/connectors/trello.jpeg';
-import whatsapp from '../../assets/connectors/whatsapp.png';
+import teams from '../../assets/connectors/teams.webp';
+import slack from '../../assets/connectors/slack.webp';
+import trello from '../../assets/connectors/trello.webp';
+import whatsapp from '../../assets/connectors/whatsapp.webp';
 import papaya from '../../assets/connectors/papaya.png';
-import googleCalendar from '../../assets/connectors/google-calendar.png';
-import outlook from '../../assets/connectors/outlook.png';
+import googleCalendar from '../../assets/connectors/google-calendar.webp';
+import outlook from '../../assets/connectors/outlook.webp';
+import gmail from '../../assets/connectors/gmail.webp';
+import jira from '../../assets/connectors/jira.webp';
 
 const LOGOS: Record<string, string> = {
   shapes, comeet, teams, slack, trello, whatsapp, papaya,
   google_calendar: googleCalendar,
   outlook_calendar: outlook,
+  gmail, jira,
   HRIS: shapes, ATS: comeet,
 };
 
@@ -34,7 +37,7 @@ const CAPABILITY_KEY: Record<string, string> = {
 };
 
 const CHANNEL_KEY: Record<string, string> = {
-  teams: 'teams', slack: 'slack', whatsapp: 'whatsapp', email: '__email',
+  teams: 'teams', slack: 'slack', whatsapp: 'whatsapp', gmail: 'gmail', email: '__email',
 };
 
 export interface ConnectorIconProps {

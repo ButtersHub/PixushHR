@@ -1,6 +1,8 @@
-import { Play, RotateCcw, Building2 } from 'lucide-react';
+import { Play, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/index';
 import { Badge } from '../ui/index';
+import pixushLogo from '../ui/assets/brand/pixush-logo.png';
+import papayaLogo from '../ui/assets/brand/papaya-logo.png';
 
 interface TopBarProps {
   onTrigger: () => void;
@@ -24,14 +26,31 @@ export function TopBar({ onTrigger, onReset }: TopBarProps) {
   return (
     <header className="flex items-center justify-between gap-4 px-4 bg-[--surface-topbar] border-b border-[--border-default] h-12 flex-shrink-0">
       {/* Brand */}
-      <div className="flex items-center gap-3">
-        <span className="text-[13px] font-semibold text-[--text-primary] tracking-tight">
-          PixushHR
+      <div className="flex items-center gap-2.5">
+        {/* Pixush — the product */}
+        <span className="flex items-center gap-1.5">
+          <img
+            src={pixushLogo}
+            alt="Pixush"
+            className="h-7 w-7 rounded-full object-cover ring-1 ring-[--border-default] [box-shadow:var(--shadow-xs)]"
+          />
+          <span className="text-[14px] font-bold tracking-[0.04em] text-[--text-primary]">
+            PIXUSH
+          </span>
         </span>
-        <span className="text-[--border-default]">|</span>
-        <span className="flex items-center gap-1.5 text-[13px] text-[--text-secondary]">
-          <Building2 size={14} className="text-[--text-tertiary]" />
-          Papaya
+        {/* divider */}
+        <span className="h-5 w-px bg-[--border-default]" aria-hidden />
+        {/* Papaya — the customer */}
+        <span className="flex items-center gap-1.5" title="Built for Papaya Global">
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-[--text-tertiary]">
+            For
+          </span>
+          <img
+            src={papayaLogo}
+            alt="Papaya Global"
+            className="h-4 w-auto select-none"
+            draggable={false}
+          />
         </span>
       </div>
 

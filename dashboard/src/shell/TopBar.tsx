@@ -32,17 +32,15 @@ export function TopBar({ onTrigger, onReset }: TopBarProps) {
           <img
             src={pixushLogo}
             alt="Pixush"
-            className="h-7 w-7 rounded-full object-cover ring-1 ring-[--border-default] [box-shadow:var(--shadow-xs)]"
+            className="h-9 w-auto select-none object-contain"
+            draggable={false}
           />
-          <span className="text-[14px] font-bold tracking-[0.04em] text-[--text-primary]">
-            PIXUSH
-          </span>
         </span>
         {/* divider */}
         <span className="h-5 w-px bg-[--border-default]" aria-hidden />
         {/* Papaya — the customer */}
-        <span className="flex items-center gap-1.5" title="Built for Papaya Global">
-          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-[--text-tertiary]">
+        <span className="flex h-9 items-center gap-1.5" title="Built for Papaya Global">
+          <span className="text-[11px] font-medium uppercase leading-none tracking-[0.06em] text-[--text-tertiary]">
             For
           </span>
           <img

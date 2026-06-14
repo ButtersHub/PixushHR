@@ -63,7 +63,7 @@ export function ConnectorIcon({ name = '', kind = 'logo', size = 16, className =
       alt={name}
       width={size}
       height={size}
-      className={`inline-block rounded-[20%] object-contain ${className}`}
+      className={`inline-block object-contain ${className}`}
       style={{ width: size, height: size }}
     />
   );

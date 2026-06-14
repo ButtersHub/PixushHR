@@ -74,7 +74,7 @@ export function IntegrationsScreen() {
   const current = installed.find((c) => c.id === selected) ?? installed[0] ?? null;
 
   return (
-    <div className="max-w-[--content-max-width] mx-auto space-y-5">
+    <div className="max-w-[--content-max-width] mx-auto space-y-6">
       <PageHeader
         eyebrow="Connectors"
         eyebrowIcon={<Zap size={11} />}
@@ -105,17 +105,17 @@ export function IntegrationsScreen() {
             return (
               <section key={role}>
                 <div className="mb-3 flex items-center gap-2.5">
-                  <div className="grid h-7 w-7 place-items-center rounded-lg border border-[--border-default] bg-[--surface-sunken] text-[--text-secondary]">
+                  <div className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-md bg-[--surface-sunken] text-[--text-tertiary]">
                     <RoleGlyph size={15} />
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <h2 className="text-[13px] font-semibold tracking-tight text-[--text-primary]">{meta.label}</h2>
-                    <span className="text-[12px] text-[--text-tertiary]">{meta.blurb}</span>
+                    <h2 className="text-[11px] font-bold uppercase tracking-[0.07em] text-[--text-secondary]">{meta.label}</h2>
+                    <span className="text-[11px] text-[--text-tertiary]">{meta.blurb}</span>
                   </div>
-                  <div className="ml-2 h-px flex-1 bg-[--border-default]" />
+                  <div className="ml-2 h-px flex-1 bg-[--border-default] opacity-60" />
                   {liveInGroup > 0 && (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-[--text-success]">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[--green-500]" /> {liveInGroup} live
+                    <span className="flex items-center gap-1.5 rounded-full bg-[--green-50] px-2 py-0.5 text-[10px] font-semibold text-[--green-700] ring-1 ring-[--green-200]">
+                      <span className="h-[5px] w-[5px] rounded-full bg-[--green-500]" aria-hidden /> {liveInGroup} live
                     </span>
                   )}
                 </div>
@@ -163,7 +163,7 @@ function Segmented({
 }) {
   const pad = size === 'lg' ? 'h-9 px-4 text-[13px]' : size === 'sm' ? 'h-7 px-2.5 text-[12px]' : 'h-8 px-3 text-[12px]';
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-xl border border-[--border-default] bg-[--surface-sunken] p-1">
+    <div className="inline-flex items-center gap-0.5 rounded-xl border border-[--border-default] bg-[--surface-sunken] p-[3px] shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -175,7 +175,7 @@ function Segmented({
               'inline-flex items-center gap-1.5 rounded-lg font-medium transition-all duration-100',
               pad,
               active
-                ? (o.activeClass ?? 'bg-[--surface-card] text-[--text-primary] shadow-[--shadow-xs]')
+                ? (o.activeClass ?? 'bg-[--surface-card] text-[--text-primary] shadow-[--shadow-sm]')
                 : 'text-[--text-secondary] hover:text-[--text-primary]',
             ].join(' ')}
             aria-pressed={active}
@@ -184,7 +184,7 @@ function Segmented({
             {o.label}
             {o.badge !== undefined && (
               <span className={[
-                'ml-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                'ml-1 grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums',
                 active ? 'bg-[--green-100] text-[--green-700]' : 'bg-[--neutral-200] text-[--text-secondary]',
               ].join(' ')}>{o.badge}</span>
             )}
@@ -201,37 +201,37 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
   return (
     <div
       className={[
-        'group relative flex flex-col overflow-hidden rounded-xl border bg-[--surface-card] p-3.5',
+        'group relative flex flex-col overflow-hidden rounded-xl border border-[--border-default] bg-[--surface-card] p-4',
         'shadow-[--shadow-xs] transition-all duration-150',
-        'hover:-translate-y-0.5 hover:border-[--border-strong] hover:shadow-[--shadow-md]',
-        c.installed ? 'border-[--border-default]' : 'border-dashed border-[--border-strong]',
+        'hover:-translate-y-[2px] hover:shadow-[--shadow-md]',
+        c.installed ? 'hover:border-[--papaya-200]' : 'hover:border-[--border-strong]',
       ].join(' ')}
     >
       {/* live accent rail — green = installed & enabled */}
       {live && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-gradient-to-b from-[--green-500] to-[--green-600]" aria-hidden />}
 
       <div className="flex items-start gap-3">
-        <div className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-xl border border-[--border-default] bg-gradient-to-br from-[--surface-card] to-[--surface-sunken] shadow-[--shadow-xs]">
+        <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-[--surface-sunken] shadow-[--shadow-xs] ring-1 ring-black/[0.06]">
           <ConnectorIcon name={c.icon} kind="logo" size={24} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-[14px] font-semibold tracking-tight text-[--text-primary]">{c.name}</p>
+            <p className="truncate text-[13px] font-semibold tracking-tight text-[--text-primary]">{c.name}</p>
             {c.installed ? (
               <Badge variant={c.enabled ? (c.mode === 'prod' ? 'real' : 'mock') : 'off'} size="xs">
                 {c.enabled ? c.mode.toUpperCase() : 'OFF'}
               </Badge>
             ) : (
-              <span className="whitespace-nowrap rounded-full border border-[--border-default] bg-[--surface-sunken] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-[--text-tertiary]">
+              <span className="whitespace-nowrap rounded border border-[--border-default] bg-[--surface-sunken] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-[--text-tertiary]">
                 Available
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.05em] text-[--text-tertiary]">{ROLE_META[c.role]?.label ?? c.role}</p>
+          <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.04em] text-[--text-tertiary]">{ROLE_META[c.role]?.label ?? c.role}</p>
         </div>
       </div>
 
-      <p className="mt-2.5 line-clamp-2 text-[12px] leading-relaxed text-[--text-secondary]">{c.description}</p>
+      <p className="mt-3 line-clamp-2 text-[12px] leading-[1.65] text-[--text-secondary]">{c.description}</p>
 
       <div className="mt-3 flex items-center justify-between border-t border-[--border-default] pt-3">
         <span className="inline-flex items-center gap-1.5 text-[11px] text-[--text-tertiary]">
@@ -241,14 +241,14 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
         {c.installed ? (
           <button
             onClick={onConfigure}
-            className="inline-flex items-center gap-1 rounded-lg border border-[--border-default] bg-[--surface-card] px-2.5 py-1 text-[12px] font-medium text-[--text-secondary] transition-colors hover:border-[--border-strong] hover:bg-[--surface-hover] hover:text-[--text-primary]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[--border-default] bg-[--surface-card] px-3 py-1.5 text-[11px] font-medium text-[--text-secondary] transition-all hover:border-[--border-strong] hover:bg-[--surface-hover] hover:text-[--text-primary]"
           >
             <Settings2 size={13} /> Configure
           </button>
         ) : (
           <button
             onClick={onInstall}
-            className="inline-flex items-center gap-1 rounded-lg bg-[--papaya-500] px-2.5 py-1 text-[12px] font-semibold text-white shadow-[--shadow-xs] transition-colors hover:bg-[--papaya-600]"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[--papaya-500] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[--shadow-sm] transition-all hover:bg-[--papaya-600] active:scale-[0.97]"
           >
             <Plus size={13} /> Install
           </button>
@@ -315,14 +315,14 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
               <button
                 onClick={() => onSelect(c.id)}
                 className={[
-                  'group relative flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-all duration-100',
+                  'group relative flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-all duration-100',
                   active
                     ? 'border-[--papaya-200] bg-[--papaya-50] shadow-[--shadow-xs]'
                     : 'border-transparent hover:bg-[--surface-hover]',
                 ].join(' ')}
               >
                 {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-[--papaya-500]" aria-hidden />}
-                <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg border border-[--border-default] bg-[--surface-card]">
+                <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg bg-[--surface-sunken] ring-1 ring-[--border-default]">
                   <ConnectorIcon name={c.icon} kind="logo" size={17} />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -342,20 +342,20 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
       {/* detail */}
       <Card className="flex-1 overflow-hidden" padding={false}>
         {/* detail header band */}
-        <div className="relative border-b border-[--border-default] bg-gradient-to-br from-[--surface-sunken] to-[--surface-card] p-4">
+        <div className="relative border-b border-[--border-default] bg-gradient-to-br from-[--surface-sunken] to-[--surface-card] p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-xl border border-[--border-default] bg-[--surface-card] shadow-[--shadow-xs]">
+              <div className="grid h-12 w-12 place-items-center rounded-xl bg-[--surface-sunken] ring-1 ring-[--border-default] shadow-[--shadow-sm]">
                 <ConnectorIcon name={current.icon} kind="logo" size={26} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-[16px] font-semibold tracking-tight text-[--text-primary]">{current.name}</h2>
+                  <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[--text-primary]">{current.name}</h2>
                   <Badge variant={current.enabled ? (current.mode === 'prod' ? 'real' : 'mock') : 'off'} size="xs">
                     {current.enabled ? current.mode.toUpperCase() : 'OFF'}
                   </Badge>
                 </div>
-                <p className="mt-0.5 text-[12px] text-[--text-secondary]">{ROLE_META[current.role]?.label ?? current.role} · {current.description}</p>
+                <p className="mt-0.5 text-[11px] text-[--text-tertiary]">{ROLE_META[current.role]?.label ?? current.role} · {current.description}</p>
               </div>
             </div>
             <label className="flex items-center gap-2 rounded-lg border border-[--border-default] bg-[--surface-card] px-2.5 py-1.5">

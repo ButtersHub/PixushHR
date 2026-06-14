@@ -6,6 +6,7 @@ import { onboardingWorkflow } from "./workflows/onboarding.js";
 import { serializePlaybook } from "./workflows/serialize.js";
 import { availableTools } from "./integrations.js";
 import type { InMemoryStore } from "./store.js";
+import { runWithContext } from "./requestContext.js";
 
 const SYSTEM_PROMPT =
   "You are Papaya's HR onboarding assistant. Be warm, professional, and accurate. " +
@@ -33,7 +34,7 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
     inputs: { task: req.task, context: req.context ?? {} },
   });
 
-  return withTrace(
+  return runWithContext({ runId: requestId }, () => withTrace(
     {
       traceName: "onboarding-execute",
       metadata: { requestId, tenant },
@@ -64,5 +65,5 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
         actions: [], // populated when we parse Hermes tool-call results (later phase)
       };
     },
-  );
+  ));
 }

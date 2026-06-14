@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FileText, ScrollText, Search, X, Check, AlertTriangle, AlertOctagon,
   User, Webhook, Server, Filter, ChevronDown, ChevronRight, Layers,
-  Clock, Copy, Zap,
+  Clock, Copy, Zap, RefreshCw,
 } from 'lucide-react';
 import { Card, PageHeader, EmptyState, LoadingState, ErrorState, ConnectorIcon, FrenchieIcon, Dropdown } from '../ui/index';
 import type { DropdownOption } from '../ui/index';
@@ -66,24 +66,62 @@ export function AuditScreen() {
   const [groupByFlow, setGroupByFlow] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsedFlows, setCollapsedFlows] = useState<Set<string>>(new Set());
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setState('loading');
-    setErrorMsg('');
+  /**
+   * fetch the audit; in `background` mode we don't flip the loading state — so the screen
+   * doesn't flicker while polling. errors during background loads are silent (the next attempt
+   * will surface them if persistent).
+   */
+  const load = useCallback(async (mode: 'foreground' | 'background' = 'foreground') => {
+    if (mode === 'foreground') {
+      setState('loading');
+      setErrorMsg('');
+    }
     try {
       const r = await fetch(`${ENGINE}/audit?tenant=papaya`);
       if (!r.ok) throw new Error(`Engine returned ${r.status}`);
       const data = (await r.json()) as AuditEntry[];
       // newest first
       setAudit([...data].sort((a, b) => (b.ts > a.ts ? 1 : -1)));
+      setLastUpdated(Date.now());
       setState('done');
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Unknown error');
-      setState('error');
+      if (mode === 'foreground') {
+        setErrorMsg(err instanceof Error ? err.message : 'Unknown error');
+        setState('error');
+      }
+      // background load failures are swallowed; the next tick will retry
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-refresh: poll every 2s while enabled. Pauses automatically when the tab is hidden,
+  // and resumes (with an immediate refresh) when it becomes visible again.
+  useEffect(() => {
+    if (!autoRefresh) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function schedule() {
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        if (document.visibilityState === 'visible') await load('background');
+        schedule();
+      }, 2000);
+    }
+    function onVisible() {
+      if (document.visibilityState === 'visible') void load('background');
+    }
+    schedule();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [autoRefresh, load]);
 
   const systems = useMemo(() => {
     const s = new Set<string>();
@@ -179,6 +217,10 @@ export function AuditScreen() {
               total={filtered.length}
               activeFilterCount={activeFilterCount}
               onReset={resetFilters}
+              autoRefresh={autoRefresh}
+              setAutoRefresh={setAutoRefresh}
+              lastUpdated={lastUpdated}
+              onManualRefresh={() => void load('background')}
             />
 
             {filtered.length === 0 ? (
@@ -282,6 +324,9 @@ interface FilterBarProps {
   groupByFlow: boolean; setGroupByFlow: (v: boolean) => void;
   total: number; activeFilterCount: number;
   onReset: () => void;
+  autoRefresh: boolean; setAutoRefresh: (v: boolean) => void;
+  lastUpdated: number | null;
+  onManualRefresh: () => void;
 }
 
 function FilterBar(p: FilterBarProps) {
@@ -334,6 +379,38 @@ function FilterBar(p: FilterBarProps) {
               <X size={12} /> Clear ({p.activeFilterCount})
             </button>
           )}
+
+          {/* divider */}
+          <span className="mx-0.5 h-5 w-px bg-[--border-default]" aria-hidden />
+
+          {/* Live / paused toggle — clicking it toggles auto-refresh */}
+          <button
+            onClick={() => p.setAutoRefresh(!p.autoRefresh)}
+            title={p.autoRefresh ? `Live · refreshing every 2s${p.lastUpdated ? ` · last update ${new Date(p.lastUpdated).toLocaleTimeString()}` : ''}` : 'Paused — click to resume'}
+            className={[
+              'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] transition-colors',
+              p.autoRefresh
+                ? 'border-[--green-200] bg-[--green-50] text-[--green-700] hover:bg-[--green-100]'
+                : 'border-[--border-default] bg-[--surface-card] text-[--text-secondary] hover:bg-[--surface-hover]',
+            ].join(' ')}
+            aria-pressed={p.autoRefresh}
+          >
+            <span className="relative inline-flex h-1.5 w-1.5">
+              {p.autoRefresh && <span className="absolute inset-0 animate-ping rounded-full bg-[--green-500] opacity-75" aria-hidden />}
+              <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${p.autoRefresh ? 'bg-[--green-500]' : 'bg-[--text-tertiary]'}`} aria-hidden />
+            </span>
+            {p.autoRefresh ? 'Live' : 'Paused'}
+          </button>
+
+          {/* Manual refresh */}
+          <button
+            onClick={p.onManualRefresh}
+            title="Refresh now"
+            className="grid h-7 w-7 place-items-center rounded-md text-[--text-secondary] hover:bg-[--surface-hover] hover:text-[--text-primary]"
+            aria-label="Refresh"
+          >
+            <RefreshCw size={13} />
+          </button>
         </div>
       </div>
     </Card>

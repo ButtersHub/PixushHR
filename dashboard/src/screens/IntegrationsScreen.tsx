@@ -201,7 +201,7 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
   return (
     <div
       className={[
-        'group relative flex flex-col overflow-hidden rounded-xl border border-[--border-default] bg-[--surface-card] p-4',
+        'group relative flex min-h-[166px] flex-col overflow-hidden rounded-xl border border-[--border-default] bg-[--surface-card] p-4',
         '[box-shadow:var(--shadow-xs)] transition-all duration-150',
         'hover:-translate-y-[2px] hover:[box-shadow:var(--shadow-md)]',
         c.installed ? 'hover:border-[--papaya-200]' : 'hover:border-[--border-strong]',
@@ -231,9 +231,9 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
         </div>
       </div>
 
-      <p className="mt-3 line-clamp-2 text-[12px] leading-[1.65] text-[--text-secondary]">{c.description}</p>
+      <p className="mt-3 min-h-[40px] line-clamp-2 text-[12px] leading-[1.65] text-[--text-secondary]">{c.description}</p>
 
-      <div className="mt-3 flex items-center justify-between border-t border-[--border-default] pt-3">
+      <div className="mt-auto flex items-center justify-between border-t border-[--border-default] pt-3">
         <span className="inline-flex items-center gap-1.5 text-[11px] text-[--text-tertiary]">
           <Wrench size={12} />
           {c.capabilities.length > 0 ? `${c.capabilities.length} ${c.capabilities.length === 1 ? 'tool' : 'tools'}` : 'no tools'}

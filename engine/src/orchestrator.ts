@@ -18,6 +18,21 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
   const def = store.getWorkflow(tenant, "onboarding") ?? onboardingWorkflow;
   const playbook = serializePlaybook(def, availableTools(store, tenant));
 
+  // Emit a "run.started" trigger audit so the Audit log shows what initiated the agent run.
+  const source = (req.context?.source as string) ?? "sensei";
+  store.audit({
+    tenant,
+    actor: "trigger",
+    status: "success",
+    capability: "run.started",
+    label: "Run started",
+    integration: source === "sensei" ? "Sensei" : "Trigger",
+    target: req.task.slice(0, 80),
+    summary: `Started by ${source}: ${req.task.slice(0, 60)}${req.task.length > 60 ? "…" : ""}`,
+    runId: requestId,
+    inputs: { task: req.task, context: req.context ?? {} },
+  });
+
   return withTrace(
     {
       traceName: "onboarding-execute",

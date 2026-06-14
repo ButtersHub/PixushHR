@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FileText, ScrollText, Search, X, Check, AlertTriangle, AlertOctagon,
-  Bot, User, Webhook, Server, Filter, ChevronDown, ChevronRight, Layers,
-  Clock, Copy,
+  User, Webhook, Server, Filter, ChevronDown, ChevronRight, Layers,
+  Clock, Copy, Zap,
 } from 'lucide-react';
-import { Card, PageHeader, EmptyState, LoadingState, ErrorState, ConnectorIcon } from '../ui/index';
+import { Card, PageHeader, EmptyState, LoadingState, ErrorState, ConnectorIcon, FrenchieIcon, Dropdown } from '../ui/index';
+import type { DropdownOption } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
 
@@ -30,11 +31,13 @@ interface AuditEntry {
 
 type LoadState = 'loading' | 'done' | 'error';
 
-const ACTOR_META: Record<Actor, { label: string; icon: typeof Bot; tone: string }> = {
-  pixush:  { label: 'Pixush',      icon: Bot,     tone: 'bg-[--papaya-50] text-[--papaya-700] ring-1 ring-[--papaya-200]' },
-  user:    { label: 'User',        icon: User,    tone: 'bg-[--blue-50] text-[--blue-700] ring-1 ring-[--blue-200]' },
-  trigger: { label: 'Trigger',     icon: Webhook, tone: 'bg-[--amber-50] text-[--amber-700] ring-1 ring-[--amber-200]' },
-  system:  { label: 'System',      icon: Server,  tone: 'bg-[--neutral-100] text-[--text-secondary] ring-1 ring-[--neutral-200]' },
+// Icon renderer: takes a size and returns an element. Used so Pixush can render the custom Frenchie SVG.
+type ActorIconRenderer = (props: { size: number; className?: string }) => React.ReactElement;
+const ACTOR_META: Record<Actor, { label: string; renderIcon: ActorIconRenderer; tone: string }> = {
+  pixush:  { label: 'Pixush',  renderIcon: (p) => <FrenchieIcon size={p.size} className={p.className} />, tone: 'bg-[--papaya-50] text-[--papaya-700] ring-1 ring-[--papaya-200]' },
+  user:    { label: 'User',    renderIcon: (p) => <User size={p.size} className={p.className} />,        tone: 'bg-[--blue-50] text-[--blue-700] ring-1 ring-[--blue-200]' },
+  trigger: { label: 'Trigger', renderIcon: (p) => <Webhook size={p.size} className={p.className} />,     tone: 'bg-[--amber-50] text-[--amber-700] ring-1 ring-[--amber-200]' },
+  system:  { label: 'System',  renderIcon: (p) => <Server size={p.size} className={p.className} />,      tone: 'bg-[--neutral-100] text-[--text-secondary] ring-1 ring-[--neutral-200]' },
 };
 
 const STATUS_META: Record<Status, { label: string; icon: typeof Check; dot: string; pill: string }> = {
@@ -60,7 +63,7 @@ export function AuditScreen() {
   const [systemFilter, setSystemFilter] = useState<string | 'all'>('all');
   const [flowFilter, setFlowFilter] = useState<string | 'all'>('all');
   const [timeWindow, setTimeWindow] = useState<string>('all');
-  const [groupByFlow, setGroupByFlow] = useState(false);
+  const [groupByFlow, setGroupByFlow] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsedFlows, setCollapsedFlows] = useState<Set<string>>(new Set());
 
@@ -189,16 +192,34 @@ export function AuditScreen() {
               </Card>
             ) : (
               <Card padding={false}>
-                <Header />
+                <Header compact={!!selected} />
                 <ul role="list" data-testid="audit-list">
                   {groupByFlow ? (
-                    grouped.map((g) => (
-                      <li key={g.runId ?? `none-${g.entries[0].id}`}>
-                        {g.runId && (
+                    grouped.map((g) => {
+                      if (!g.runId) {
+                        // ungrouped entries (no runId)
+                        return (
+                          <li key={`none-${g.entries[0].id}`}>
+                            {g.entries.map((e) => (
+                              <Row key={e.id} entry={e} selected={selectedId === e.id} onSelect={() => setSelectedId(e.id)} compact={!!selected} />
+                            ))}
+                          </li>
+                        );
+                      }
+                      // grouped flow: render the trigger row + the steps with a connector line
+                      const flowCollapsed = collapsedFlows.has(g.runId);
+                      // sort ascending so trigger comes first, steps follow in execution order
+                      const ascending = [...g.entries].sort((a, b) => (a.ts > b.ts ? 1 : -1));
+                      const trigger = ascending.find((e) => e.actor === 'trigger') ?? ascending[0];
+                      const steps = ascending.filter((e) => e.id !== trigger.id);
+                      const flowStart = new Date(trigger.ts).getTime();
+                      return (
+                        <li key={g.runId}>
                           <FlowHeader
                             runId={g.runId}
                             entries={g.entries}
-                            collapsed={collapsedFlows.has(g.runId)}
+                            trigger={trigger}
+                            collapsed={flowCollapsed}
                             onToggle={() => {
                               const s = new Set(collapsedFlows);
                               if (s.has(g.runId!)) s.delete(g.runId!); else s.add(g.runId!);
@@ -206,15 +227,35 @@ export function AuditScreen() {
                             }}
                             onFilter={() => setFlowFilter(g.runId!)}
                           />
-                        )}
-                        {(!g.runId || !collapsedFlows.has(g.runId)) && g.entries.map((e) => (
-                          <Row key={e.id} entry={e} selected={selectedId === e.id} onSelect={() => setSelectedId(e.id)} indented={!!g.runId} />
-                        ))}
-                      </li>
-                    ))
+                          {!flowCollapsed && (
+                            <>
+                              <TriggerRow entry={trigger} selected={selectedId === trigger.id} onSelect={() => setSelectedId(trigger.id)} compact={!!selected} />
+                              <div className="relative">
+                                {/* vertical connector line from trigger down through steps */}
+                                {steps.length > 0 && (
+                                  <div className="pointer-events-none absolute left-[26px] top-0 bottom-3 w-px bg-[--border-default]" aria-hidden />
+                                )}
+                                {steps.map((e, i) => (
+                                  <Row
+                                    key={e.id}
+                                    entry={e}
+                                    step={i + 1}
+                                    relativeMs={new Date(e.ts).getTime() - flowStart}
+                                    selected={selectedId === e.id}
+                                    onSelect={() => setSelectedId(e.id)}
+                                    compact={!!selected}
+                                    inFlow
+                                  />
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </li>
+                      );
+                    })
                   ) : (
                     filtered.map((e) => (
-                      <Row key={e.id} entry={e} selected={selectedId === e.id} onSelect={() => setSelectedId(e.id)} />
+                      <Row key={e.id} entry={e} selected={selectedId === e.id} onSelect={() => setSelectedId(e.id)} compact={!!selected} />
                     ))
                   )}
                 </ul>
@@ -260,7 +301,7 @@ function FilterBar(p: FilterBarProps) {
           />
         </div>
 
-        <Pill icon={<Bot size={12} />} label="Actor" value={p.actor} options={[
+        <Pill icon={<FrenchieIcon size={12} />} label="Actor" value={p.actor} options={[
           { value: 'all', label: 'Any' }, { value: 'pixush', label: 'Pixush' }, { value: 'user', label: 'User' },
           { value: 'trigger', label: 'Trigger' }, { value: 'system', label: 'System' },
         ]} onChange={(v) => p.setActor(v as Actor | 'all')} />
@@ -301,38 +342,51 @@ function FilterBar(p: FilterBarProps) {
 
 function Pill({ icon, label, value, options, onChange }: {
   icon: React.ReactNode; label: string; value: string;
-  options: { value: string; label: string }[]; onChange: (v: string) => void;
+  options: DropdownOption[]; onChange: (v: string) => void;
 }) {
   const isActive = value !== 'all';
   return (
-    <label className={[
-      'group inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 transition-colors',
-      isActive
-        ? 'border-[--papaya-200] bg-[--papaya-50] text-[--papaya-700]'
-        : 'border-[--border-default] bg-[--surface-card] text-[--text-secondary] hover:border-[--border-strong]',
-    ].join(' ')}>
-      <span className="opacity-80">{icon}</span>
-      <span className="text-[11px] font-medium uppercase tracking-[0.04em] opacity-70">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-transparent text-[12px] font-medium outline-none focus-visible:outline-none"
-      >
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </label>
+    <Dropdown
+      value={value}
+      options={options}
+      onChange={onChange}
+      renderTrigger={(current, open) => (
+        <span className={[
+          'inline-flex h-8 items-center gap-1.5 rounded-lg border px-2 transition-colors',
+          isActive
+            ? 'border-[--papaya-200] bg-[--papaya-50] text-[--papaya-700]'
+            : 'border-[--border-default] bg-[--surface-card] text-[--text-secondary] hover:border-[--border-strong]',
+          open ? 'ring-2 ring-[--papaya-500] ring-offset-0' : '',
+        ].join(' ')}>
+          <span className="opacity-80">{icon}</span>
+          <span className="text-[11px] font-medium uppercase tracking-[0.04em] opacity-70">{label}</span>
+          <span className="text-[12px] font-medium">{current?.label ?? 'Any'}</span>
+          <ChevronDown size={12} className={`opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </span>
+      )}
+    />
   );
 }
 
+/* ── Grid templates (compact when side panel is open) ─────────── */
+// Full (no panel): status · icon · action · target · summary · duration · actor · time
+// Compact (panel open): status · icon · action · target · duration · actor · time   (summary lives in the panel)
+const GRID_FULL    = 'grid-cols-[10px_36px_minmax(140px,1.2fr)_minmax(100px,1fr)_minmax(140px,1.4fr)_60px_auto_72px]';
+const GRID_COMPACT = 'grid-cols-[10px_36px_minmax(140px,1.4fr)_minmax(100px,1fr)_60px_auto_72px]';
+
 /* ── Table header ─────────────────────────────────────────────── */
-function Header() {
+function Header({ compact }: { compact: boolean }) {
   return (
-    <div className="sticky top-0 z-10 grid grid-cols-[auto_28px_minmax(160px,1.4fr)_minmax(120px,1fr)_minmax(180px,2fr)_72px_auto_88px] items-center gap-3 border-b border-[--border-default] bg-[--surface-sunken]/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-[--text-tertiary] backdrop-blur">
-      <span className="w-2" aria-hidden />
+    <div className={[
+      'sticky top-0 z-10 grid items-center gap-3 border-b border-[--border-default] bg-[--surface-sunken]/80 px-3 py-2',
+      'text-[10px] font-semibold uppercase tracking-[0.06em] text-[--text-tertiary] backdrop-blur',
+      compact ? GRID_COMPACT : GRID_FULL,
+    ].join(' ')}>
+      <span aria-hidden />
       <span aria-hidden />
       <span>Action</span>
       <span>Target</span>
-      <span>Summary</span>
+      {!compact && <span>Summary</span>}
       <span className="text-right">Duration</span>
       <span>Actor</span>
       <span className="text-right">Time</span>
@@ -341,57 +395,156 @@ function Header() {
 }
 
 /* ── Row ──────────────────────────────────────────────────────── */
-function Row({ entry: e, selected, onSelect, indented }: { entry: AuditEntry; selected: boolean; onSelect: () => void; indented?: boolean }) {
+function Row({ entry: e, selected, onSelect, inFlow, step, relativeMs, compact }: {
+  entry: AuditEntry;
+  selected: boolean;
+  onSelect: () => void;
+  /** indented inside a flow group (renders a step-number bullet) */
+  inFlow?: boolean;
+  /** 1-based step number within a flow */
+  step?: number;
+  /** ms since the flow's trigger */
+  relativeMs?: number;
+  /** hide the Summary column to make room for the side panel */
+  compact: boolean;
+}) {
   const status = STATUS_META[e.status];
   const actor = ACTOR_META[e.actor];
-  const ActorIcon = actor.icon;
+  const ActorIcon = actor.renderIcon;
   return (
     <button
       onClick={onSelect}
       className={[
-        'grid w-full grid-cols-[auto_28px_minmax(160px,1.4fr)_minmax(120px,1fr)_minmax(180px,2fr)_72px_auto_88px]',
-        'items-center gap-3 border-b border-[--border-default] px-3 py-2.5 text-left transition-colors last:border-b-0',
+        'grid w-full items-center gap-3 border-b border-[--border-default] px-3 py-2 text-left transition-colors last:border-b-0',
+        compact ? GRID_COMPACT : GRID_FULL,
         selected ? 'bg-[--papaya-50]' : 'hover:bg-[--surface-hover]',
-        indented ? 'pl-8' : '',
       ].join(' ')}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} aria-hidden title={status.label} />
-      <ConnectorIcon name={e.integration?.toLowerCase() === 'channels' ? 'teams' : (capabilityIconKey(e.capability))} kind="capability" size={18} />
+      {/* col 1: status dot — or, in a flow, a step bullet (numbered) */}
+      <span className="relative flex items-center justify-center">
+        {inFlow && step !== undefined ? (
+          <span className="z-10 grid h-5 w-5 -translate-x-[2px] place-items-center rounded-full bg-[--surface-card] font-mono text-[9px] font-semibold text-[--text-tertiary] ring-1 ring-[--border-default]">
+            {step}
+          </span>
+        ) : (
+          <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} aria-hidden title={status.label} />
+        )}
+      </span>
+
+      {/* col 2: capability icon (colored tile for non-app fallbacks) */}
+      <span className="flex items-center justify-center">
+        <ConnectorIcon
+          name={e.capability}
+          kind="capability"
+          size={26}
+          tile
+        />
+      </span>
+
+      {/* col 3: action label + technical id */}
       <div className="min-w-0">
         <p className="truncate text-[13px] font-medium text-[--text-primary]">{e.label ?? humanize(e.capability)}</p>
         <p className="truncate font-mono text-[10.5px] text-[--text-tertiary]">{e.capability}</p>
       </div>
+
+      {/* col 4: target */}
       <span className="truncate text-[12px] text-[--text-secondary]">{e.target}</span>
-      <span className="truncate text-[12px] text-[--text-tertiary]">{e.summary}</span>
+
+      {/* col 5: summary (hidden in compact) */}
+      {!compact && <span className="truncate text-[12px] text-[--text-tertiary]">{e.summary}</span>}
+
+      {/* col 6: duration */}
       <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]">
         {typeof e.durationMs === 'number' ? `${e.durationMs}ms` : '—'}
       </span>
+
+      {/* col 7: actor pill */}
       <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
-        <ActorIcon size={10} /> {actor.label}
+        <ActorIcon size={11} /> {actor.label}
       </span>
+
+      {/* col 8: time — relative to flow start when inside a flow, otherwise wall-clock */}
       <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]" title={new Date(e.ts).toISOString()}>
+        {inFlow && relativeMs !== undefined
+          ? (relativeMs === 0 ? '0ms' : `+${formatRel(relativeMs)}`)
+          : new Date(e.ts).toLocaleTimeString()}
+      </span>
+    </button>
+  );
+}
+
+/* ── Trigger row (the visual "start" of a flow group) ─────────── */
+function TriggerRow({ entry: e, selected, onSelect, compact }: {
+  entry: AuditEntry; selected: boolean; onSelect: () => void; compact: boolean;
+}) {
+  const actor = ACTOR_META[e.actor];
+  const ActorIcon = actor.renderIcon;
+  return (
+    <button
+      onClick={onSelect}
+      className={[
+        'relative grid w-full items-center gap-3 border-b border-[--border-default] px-3 py-2.5 text-left transition-colors',
+        compact ? GRID_COMPACT : GRID_FULL,
+        selected ? 'bg-[--papaya-50]' : 'bg-[--amber-50]/40 hover:bg-[--amber-50]/70',
+      ].join(' ')}
+    >
+      {/* col 1: trigger marker (lightning bolt) */}
+      <span className="relative flex items-center justify-center">
+        <span className="grid h-5 w-5 -translate-x-[2px] place-items-center rounded-full bg-[--amber-100] text-[--amber-700] ring-1 ring-[--amber-200]">
+          <Zap size={11} />
+        </span>
+      </span>
+
+      <span className="flex items-center justify-center">
+        <ConnectorIcon name={e.capability} kind="capability" size={26} tile />
+      </span>
+
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[--amber-700]">
+          <span>Trigger</span>
+          <span className="font-mono text-[10px] font-medium normal-case tracking-normal text-[--text-tertiary]">{e.capability}</span>
+        </p>
+        <p className="truncate text-[13px] font-medium text-[--text-primary]">{e.label ?? humanize(e.capability)}</p>
+      </div>
+
+      <span className="truncate text-[12px] text-[--text-secondary]">{e.target}</span>
+      {!compact && <span className="truncate text-[12px] text-[--text-tertiary]">{e.summary}</span>}
+      <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]">{typeof e.durationMs === 'number' ? `${e.durationMs}ms` : '—'}</span>
+      <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
+        <ActorIcon size={11} /> {actor.label}
+      </span>
+      <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]">
         {new Date(e.ts).toLocaleTimeString()}
       </span>
     </button>
   );
 }
 
+function formatRel(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`;
+  return `${Math.round(ms / 1000)}s`;
+}
+
 /* ── Flow header (group-by-flow view) ─────────────────────────── */
-function FlowHeader({ runId, entries, collapsed, onToggle, onFilter }: {
-  runId: string; entries: AuditEntry[]; collapsed: boolean; onToggle: () => void; onFilter: () => void;
+function FlowHeader({ runId, entries, trigger, collapsed, onToggle, onFilter }: {
+  runId: string; entries: AuditEntry[]; trigger: AuditEntry;
+  collapsed: boolean; onToggle: () => void; onFilter: () => void;
 }) {
-  const first = entries[entries.length - 1];
-  const last = entries[0];
-  const dur = new Date(last.ts).getTime() - new Date(first.ts).getTime();
+  const tsList = entries.map((e) => new Date(e.ts).getTime());
+  const dur = Math.max(...tsList) - Math.min(...tsList);
   const ok = entries.filter((e) => e.status === 'success').length;
   const bad = entries.length - ok;
   return (
-    <div className="flex items-center gap-2 border-b border-[--border-default] bg-[--surface-sunken] px-3 py-1.5">
-      <button onClick={onToggle} className="grid h-5 w-5 place-items-center rounded text-[--text-secondary] hover:bg-[--surface-card]">
+    <div className="flex items-center gap-2 border-y border-[--border-default] bg-gradient-to-r from-[--surface-sunken] to-[--surface-card] px-3 py-1.5">
+      <button onClick={onToggle} className="grid h-5 w-5 place-items-center rounded text-[--text-secondary] hover:bg-[--surface-card]" aria-label={collapsed ? 'Expand flow' : 'Collapse flow'}>
         {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
       </button>
       <Layers size={12} className="text-[--text-tertiary]" />
-      <span className="font-mono text-[11px] text-[--text-secondary]">{shortId(runId)}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[--text-secondary]">Flow</span>
+      <span className="font-mono text-[11px] text-[--text-primary]">{shortId(runId)}</span>
+      <span className="text-[11px] text-[--text-tertiary]">·</span>
+      <span className="truncate text-[11px] text-[--text-secondary]" title={trigger.target}>{trigger.target}</span>
       <span className="text-[11px] text-[--text-tertiary]">·</span>
       <span className="text-[11px] text-[--text-secondary]">{entries.length} {entries.length === 1 ? 'action' : 'actions'}</span>
       {dur > 0 && (
@@ -412,22 +565,20 @@ function RawPanel({ entry: e, onClose }: { entry: AuditEntry; onClose: () => voi
   const status = STATUS_META[e.status];
   const actor = ACTOR_META[e.actor];
   const StatusIcon = status.icon;
-  const ActorIcon = actor.icon;
+  const ActorIcon = actor.renderIcon;
 
   function copy(v: unknown) {
     navigator.clipboard?.writeText(typeof v === 'string' ? v : JSON.stringify(v, null, 2));
   }
 
   return (
-    <Card className="w-[420px] flex-shrink-0 overflow-hidden" padding={false}>
+    <Card className="w-[380px] flex-shrink-0 overflow-hidden self-start sticky top-2" padding={false}>
       <div className="relative border-b border-[--border-default] bg-gradient-to-br from-[--surface-sunken] to-[--surface-card] p-4">
         <button onClick={onClose} className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded text-[--text-tertiary] hover:bg-[--surface-card] hover:text-[--text-primary]" aria-label="Close panel">
           <X size={14} />
         </button>
         <div className="flex items-start gap-3 pr-8">
-          <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-[--surface-card] ring-1 ring-[--border-default] shadow-[--shadow-xs]">
-            <ConnectorIcon name={capabilityIconKey(e.capability)} kind="capability" size={20} />
-          </div>
+          <ConnectorIcon name={e.capability} kind="capability" size={44} tile />
           <div className="min-w-0 flex-1">
             <p className="text-[14px] font-semibold leading-tight text-[--text-primary]">{e.label ?? humanize(e.capability)}</p>
             <p className="mt-0.5 truncate font-mono text-[11px] text-[--text-tertiary]">{e.capability}</p>
@@ -527,10 +678,4 @@ function humanize(capability: string): string {
 }
 function shortId(s: string): string {
   return s.length > 8 ? s.slice(0, 8) : s;
-}
-function capabilityIconKey(capability: string): string {
-  // map system/integrations capabilities to brand logos used elsewhere
-  if (capability.startsWith('integrations.')) return 'integrations';
-  if (capability.startsWith('system.')) return 'system';
-  return capability;
 }

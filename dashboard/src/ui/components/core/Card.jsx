@@ -12,7 +12,7 @@ export function Card({ children, className = '', padding = true, ...rest }) {
     <div
       className={[
         'bg-[--surface-card] border border-[--border-default] rounded-lg',
-        'shadow-[--shadow-sm]',
+        '[box-shadow:var(--shadow-sm)]',
         padding ? 'p-4' : '',
         className,
       ].join(' ')}

@@ -20,7 +20,7 @@ export interface PageHeaderProps {
  */
 export function PageHeader({ eyebrow, eyebrowIcon, title, subtitle, right, glow = true, className = '' }: PageHeaderProps) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl border border-[--border-default] bg-[--surface-card] shadow-[--shadow-sm] ${className}`}>
+    <div className={`relative overflow-hidden rounded-2xl border border-[--border-default] bg-[--surface-card] [box-shadow:var(--shadow-sm)] ${className}`}>
       {glow && (
         <div
           className="pointer-events-none absolute -right-8 -top-20 h-72 w-72 rounded-full opacity-[0.15] blur-3xl"

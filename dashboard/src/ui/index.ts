@@ -3,6 +3,7 @@ export { Button, IconButton } from './components/core/Button';
 export { Badge, StatusDot } from './components/core/Badge';
 export { Card, CardHeader, CardBody, CardDivider, KeyValueRow, KeyValueList } from './components/core/Card';
 export { Input, Textarea, Select, Toggle } from './components/core/Input';
+export { PageHeader } from './components/core/PageHeader';
 export { Toast, ToastContainer } from './components/core/Toast';
 
 // Data

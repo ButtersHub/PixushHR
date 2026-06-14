@@ -4,15 +4,18 @@ import {
   Users, FileText, MessagesSquare, KanbanSquare, Calendar as CalendarIcon, Palette,
   Zap, ArrowRight,
 } from 'lucide-react';
-import { Card, ConnectorIcon, Toggle, Table, Badge, LoadingState, ErrorState, EmptyState } from '../ui/index';
+import { Card, PageHeader, ConnectorIcon, Toggle, Table, Badge, LoadingState, ErrorState, EmptyState } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
+
+interface Capability { name: string; label: string; description: string; wired?: boolean }
 
 interface Connector {
   id: string; name: string; role: string; description: string; icon: string;
   installed: boolean; enabled: boolean; mode: 'mock' | 'prod';
   config: { mock: { failNext?: boolean; latencyMs?: number; seed?: string }; prod: { baseUrl?: string; authRef?: string; ids?: string } };
   tools: string[];
+  capabilities: Capability[];
 }
 
 const ROLES = ['HRIS', 'ATS', 'Channels', 'TaskBoard', 'Calendar', 'Content'];
@@ -70,31 +73,19 @@ export function IntegrationsScreen() {
 
   return (
     <div className="max-w-[--content-max-width] mx-auto space-y-5">
-      {/* ── Hero header ─────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-[--border-default] bg-[--surface-card] shadow-[--shadow-xs]">
-        <div
-          className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full opacity-[0.12] blur-2xl"
-          style={{ background: 'radial-gradient(circle, var(--papaya-500), transparent 70%)' }}
-          aria-hidden
-        />
-        <div className="relative flex flex-wrap items-end justify-between gap-4 p-5">
-          <div className="max-w-xl">
-            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-[--papaya-200] bg-[--papaya-50] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[--papaya-700]">
-              <Zap size={11} /> Connectors
-            </div>
-            <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.02em] text-[--text-primary]">Integrations</h1>
-            <p className="mt-1 text-[13px] leading-relaxed text-[--text-secondary]">
-              Install systems the agent works across, switch each between mock and prod, and control
-              exactly which capabilities reach the agent.
-            </p>
-          </div>
-          <div className="flex items-stretch gap-2.5">
-            <Stat value={installed.length} label="installed" tone="papaya" />
+      <PageHeader
+        eyebrow="Connectors"
+        eyebrowIcon={<Zap size={11} />}
+        title="Integrations"
+        subtitle="Install systems the agent works across, switch each between mock and prod, and control exactly which capabilities reach the agent."
+        right={
+          <>
+            <Stat value={installed.length} label="installed" tone="emerald" />
             <Stat value={available.length} label="available" tone="neutral" />
-            <Stat value={liveTools} label="live tools" tone="emerald" />
-          </div>
-        </div>
-      </div>
+            <Stat value={liveTools} label="live tools" tone="papaya" />
+          </>
+        }
+      />
 
       {/* ── Segmented tabs ──────────────────────────────────────── */}
       <Segmented
@@ -236,8 +227,8 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
         c.installed ? 'border-[--border-default]' : 'border-dashed border-[--border-strong]',
       ].join(' ')}
     >
-      {/* live accent rail */}
-      {live && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-gradient-to-b from-[--papaya-400] to-[--papaya-600]" aria-hidden />}
+      {/* live accent rail — green = installed & enabled */}
+      {live && <span className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-gradient-to-b from-[--green-500] to-[--green-600]" aria-hidden />}
 
       <div className="flex items-start gap-3">
         <div className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-xl border border-[--border-default] bg-gradient-to-br from-[--surface-card] to-[--surface-sunken] shadow-[--shadow-xs]">
@@ -265,7 +256,7 @@ function ConnectorTile({ connector: c, onInstall, onConfigure }: { connector: Co
       <div className="mt-3 flex items-center justify-between border-t border-[--border-default] pt-3">
         <span className="inline-flex items-center gap-1.5 text-[11px] text-[--text-tertiary]">
           <Wrench size={12} />
-          {c.tools.length > 0 ? `${c.tools.length} ${c.tools.length === 1 ? 'tool' : 'tools'}` : 'no tools'}
+          {c.capabilities.length > 0 ? `${c.capabilities.length} ${c.capabilities.length === 1 ? 'tool' : 'tools'}` : 'no tools'}
         </span>
         {c.installed ? (
           <button
@@ -472,20 +463,27 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
 
           {subtab === 'tools' && (
             <ul className="space-y-1.5">
-              {current.tools.length === 0 && (
+              {current.capabilities.length === 0 && (
                 <li className="rounded-lg border border-dashed border-[--border-default] p-3 text-center text-[12px] text-[--text-tertiary]">
-                  This connector exposes no agent tools.
+                  This connector exposes no tools.
                 </li>
               )}
-              {current.tools.map((t) => (
-                <li key={t} className="flex items-center gap-2.5 rounded-lg border border-[--border-default] bg-[--surface-card] px-3 py-2 transition-colors hover:bg-[--surface-hover]">
-                  <div className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-md bg-[--surface-sunken]">
-                    <ConnectorIcon name={t} kind="capability" size={14} />
+              {current.capabilities.map((cap) => (
+                <li key={cap.name} className="flex items-center gap-3 rounded-lg border border-[--border-default] bg-[--surface-card] px-3 py-2 transition-colors hover:bg-[--surface-hover]">
+                  <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-[--border-default] bg-[--surface-sunken]">
+                    <ConnectorIcon name={current.icon} kind="logo" size={15} />
                   </div>
-                  <span className="font-mono text-[12px] text-[--text-primary]">{t}</span>
-                  {current.enabled
-                    ? <span className="ml-auto flex items-center gap-1 text-[10px] font-medium text-[--text-success]"><Check size={11} /> exposed</span>
-                    : <span className="ml-auto text-[10px] font-medium text-[--text-tertiary]">hidden</span>}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium leading-tight text-[--text-primary]">{cap.label}</p>
+                    <p className="truncate text-[11px] text-[--text-tertiary]">{cap.description}</p>
+                  </div>
+                  {cap.wired ? (
+                    current.enabled
+                      ? <span className="ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-[--green-50] px-1.5 py-0.5 text-[10px] font-semibold text-[--green-700]"><Check size={10} /> Live</span>
+                      : <span className="ml-auto flex-shrink-0 rounded-full bg-[--surface-sunken] px-1.5 py-0.5 text-[10px] font-semibold text-[--text-tertiary]">Hidden</span>
+                  ) : (
+                    <span className="ml-auto flex-shrink-0 rounded-full border border-[--border-default] px-1.5 py-0.5 text-[10px] font-medium text-[--text-tertiary]">Available</span>
+                  )}
                 </li>
               ))}
             </ul>

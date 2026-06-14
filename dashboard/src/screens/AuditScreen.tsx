@@ -301,7 +301,7 @@ function FilterBar(p: FilterBarProps) {
           />
         </div>
 
-        <Pill icon={<FrenchieIcon size={12} />} label="Actor" value={p.actor} options={[
+        <Pill icon={<FrenchieIcon size={14} />} label="Actor" value={p.actor} options={[
           { value: 'all', label: 'Any' }, { value: 'pixush', label: 'Pixush' }, { value: 'user', label: 'User' },
           { value: 'trigger', label: 'Trigger' }, { value: 'system', label: 'System' },
         ]} onChange={(v) => p.setActor(v as Actor | 'all')} />
@@ -460,7 +460,7 @@ function Row({ entry: e, selected, onSelect, inFlow, step, relativeMs, compact }
 
       {/* col 7: actor pill */}
       <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
-        <ActorIcon size={11} /> {actor.label}
+        <ActorIcon size={13} /> {actor.label}
       </span>
 
       {/* col 8: time — relative to flow start when inside a flow, otherwise wall-clock */}
@@ -511,7 +511,7 @@ function TriggerRow({ entry: e, selected, onSelect, compact }: {
       {!compact && <span className="truncate text-[12px] text-[--text-tertiary]">{e.summary}</span>}
       <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]">{typeof e.durationMs === 'number' ? `${e.durationMs}ms` : '—'}</span>
       <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
-        <ActorIcon size={11} /> {actor.label}
+        <ActorIcon size={13} /> {actor.label}
       </span>
       <span className="text-right text-[11px] tabular-nums text-[--text-tertiary]">
         {new Date(e.ts).toLocaleTimeString()}
@@ -589,7 +589,7 @@ function RawPanel({ entry: e, onClose }: { entry: AuditEntry; onClose: () => voi
             <StatusIcon size={11} /> {status.label}
           </span>
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${actor.tone}`}>
-            <ActorIcon size={11} /> {actor.label}
+            <ActorIcon size={15} /> {actor.label}
           </span>
           {e.integration && (
             <span className="inline-flex items-center gap-1 rounded-full bg-[--surface-card] px-2 py-0.5 text-[10px] font-medium text-[--text-secondary] ring-1 ring-[--border-default]">

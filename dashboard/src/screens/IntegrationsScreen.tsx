@@ -56,10 +56,12 @@ export function IntegrationsScreen() {
   useEffect(() => { load(); }, [load]);
 
   async function act(id: string, path: string, body?: unknown) {
+    // Always send a JSON body — Fastify 400s an application/json POST with an empty body,
+    // which install/uninstall (no payload) would otherwise trigger.
     const r = await fetch(`${ENGINE}/integrations/${id}/${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
+      body: JSON.stringify(body ?? {}),
     });
     if (!r.ok) { setErrorMsg(`Action failed (${r.status})`); setState('error'); return; }
     await load();

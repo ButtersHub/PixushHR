@@ -71,8 +71,6 @@ export function IntegrationsScreen() {
   if (state === 'error') return <div className="max-w-[--content-max-width] mx-auto p-2"><ErrorState title="Couldn't load integrations" description={errorMsg} onRetry={load} /></div>;
 
   const installed = connectors.filter((c) => c.installed);
-  const available = connectors.filter((c) => !c.installed);
-  const liveTools = installed.filter((c) => c.enabled).reduce((acc, c) => acc + c.tools.length, 0);
   const current = installed.find((c) => c.id === selected) ?? installed[0] ?? null;
 
   return (
@@ -82,13 +80,6 @@ export function IntegrationsScreen() {
         eyebrowIcon={<Zap size={11} />}
         title="Integrations"
         subtitle="Install systems the agent works across, switch each between mock and prod, and control exactly which capabilities reach the agent."
-        right={
-          <>
-            <Stat value={installed.length} label="installed" tone="emerald" />
-            <Stat value={available.length} label="available" tone="neutral" />
-            <Stat value={liveTools} label="live tools" tone="papaya" />
-          </>
-        }
       />
 
       {/* ── Segmented tabs ──────────────────────────────────────── */}
@@ -155,21 +146,6 @@ export function IntegrationsScreen() {
           onBrowse={() => setTab('catalog')}
         />
       )}
-    </div>
-  );
-}
-
-/* ── Hero stat chip ───────────────────────────────────────────── */
-function Stat({ value, label, tone }: { value: number; label: string; tone: 'papaya' | 'neutral' | 'emerald' }) {
-  const tones = {
-    papaya: 'text-[--papaya-600]',
-    neutral: 'text-[--text-primary]',
-    emerald: 'text-[--status-real-text]',
-  };
-  return (
-    <div className="min-w-[72px] rounded-xl border border-[--border-default] bg-[--surface-sunken] px-3.5 py-2 text-center">
-      <div className={`text-[20px] font-semibold leading-none tracking-tight ${tones[tone]}`}>{value}</div>
-      <div className="mt-1 text-[10px] font-medium uppercase tracking-[0.07em] text-[--text-tertiary]">{label}</div>
     </div>
   );
 }

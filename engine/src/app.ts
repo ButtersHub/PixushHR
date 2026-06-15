@@ -5,7 +5,7 @@ import type { InMemoryStore } from "./store.js";
 import type { HermesClient } from "./hermes.js";
 import { executeTool, TOOLS, capabilitySpecs } from "./tools.js";
 import { runExecute } from "./orchestrator.js";
-import { gateToolCall, CONNECTORS, connectorState, defaultState, roleForConnector } from "./integrations.js";
+import { gateToolCall, CONNECTORS, connectorState, defaultState, roleForConnector, enabledTriggers } from "./integrations.js";
 import { seedFixtures } from "./fixtures.js";
 import type { ExecuteRequest, ExecuteResponse } from "./models.js";
 import { traceToolCall } from "./tracing.js";
@@ -80,6 +80,11 @@ export function buildApp(deps: Deps): FastifyInstance {
   app.get<{ Querystring: { tenant?: string } }>("/audit", async (req) => {
     const tenant = req.query.tenant ?? "papaya";
     return store.getAudit(tenant);
+  });
+
+  app.get<{ Querystring: { tenant?: string } }>("/triggers", async (req) => {
+    const tenant = req.query.tenant ?? "papaya";
+    return enabledTriggers(store, tenant);
   });
 
   app.get<{ Querystring: { tenant?: string } }>("/messages", async (req) => {

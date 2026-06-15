@@ -277,3 +277,19 @@ export function gateToolCall(store: InMemoryStore, tenant: string, toolName: str
 export function roleForConnector(id: string): RolePort | undefined {
   return CONNECTORS.find((c) => c.id === id)?.role;
 }
+
+/** Triggers from all installed+enabled connectors. Used by GET /triggers. */
+export function enabledTriggers(
+  store: InMemoryStore,
+  tenant: string,
+): Array<ConnectorTrigger & { connector: string }> {
+  const out: Array<ConnectorTrigger & { connector: string }> = [];
+  for (const def of CONNECTORS) {
+    const state = connectorState(store, tenant, def);
+    if (!state.installed || !state.enabled) continue;
+    for (const t of def.triggers ?? []) {
+      out.push({ ...t, connector: def.id });
+    }
+  }
+  return out;
+}

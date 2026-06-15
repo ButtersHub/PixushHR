@@ -149,6 +149,27 @@ describe("/execute playbook injection", () => {
     expect(joined).toContain("preflight validation");
     expect(joined).not.toContain("candidateId");
   });
+
+  it("uses validation-only LLM instructions for relative onboarding dates", async () => {
+    const hermes = new FakeHermes("Please provide an absolute verified start date before onboarding.");
+    const store = new InMemoryStore();
+    const app = buildApp({ store, hermes });
+    const res = await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: {
+        task: "Run onboarding for Lior Ben Ami. Start date: yesterday.",
+        context: { tenant: "papaya" },
+      },
+    });
+    const joined = hermes.lastMessages.map((m) => m.content).join("\n");
+    expect(joined).toContain("preflight validation");
+    expect(joined).toContain("Do not call any tools");
+    expect(joined).not.toContain("ONBOARDING PLAYBOOK");
+    expect(joined).not.toContain("candidateId");
+    expect(res.json().structured.actions).toEqual([]);
+    expect(store.getAudit("papaya").filter((entry) => entry.actor === "pixush")).toHaveLength(0);
+  });
 });
 
 describe("runExecute (no-op tracing path)", () => {

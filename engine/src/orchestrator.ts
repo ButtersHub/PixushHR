@@ -24,7 +24,7 @@ function workflowIdFor(req: ExecuteRequest): "onboarding" | "offboarding" {
 
 function needsOnboardingPreflight(req: ExecuteRequest): boolean {
   return /\bonboard/i.test(req.task) &&
-    /\b(?:do not know|don't know|missing|unknown|not available|unverified)\b/i.test(req.task);
+    /\b(?:do not know|don't know|missing|unknown|not available|unverified|today|tomorrow|yesterday|next\s+\w+|last\s+\w+)\b/i.test(req.task);
 }
 
 const RESPONSE_STYLE_RULES = [

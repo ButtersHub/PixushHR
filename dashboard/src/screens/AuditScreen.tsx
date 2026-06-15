@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   FileText, ScrollText, Search, X, Check, AlertTriangle, AlertOctagon,
   User, Webhook, Server, Filter, ChevronDown, ChevronRight, Layers,
-  Clock, Copy, RefreshCw,
+  Clock, Copy, RefreshCw, MessageCircle,
 } from 'lucide-react';
 import { Card, PageHeader, EmptyState, LoadingState, ErrorState, ConnectorIcon, FrenchieIcon, Dropdown } from '../ui/index';
 import type { DropdownOption } from '../ui/index';
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
 
-type Actor = 'pixush' | 'user' | 'trigger' | 'system';
+type Actor = 'pixush' | 'user' | 'trigger' | 'system' | 'hermes-native';
 type Status = 'success' | 'error' | 'escalated';
 
 interface AuditEntry {
@@ -38,6 +38,7 @@ const ACTOR_META: Record<Actor, { label: string; renderIcon: ActorIconRenderer; 
   user:    { label: 'User',    renderIcon: (p) => <User size={p.size} className={p.className} />,        tone: 'bg-[--blue-50] text-[--blue-700] ring-1 ring-[--blue-200]' },
   trigger: { label: 'Trigger', renderIcon: (p) => <Webhook size={p.size} className={p.className} />,     tone: 'bg-[--amber-50] text-[--amber-700] ring-1 ring-[--amber-200]' },
   system:  { label: 'System',  renderIcon: (p) => <Server size={p.size} className={p.className} />,      tone: 'bg-[--neutral-100] text-[--text-secondary] ring-1 ring-[--neutral-200]' },
+  'hermes-native': { label: 'Hermes', renderIcon: (p) => <MessageCircle size={p.size} className={p.className} />, tone: 'bg-[--green-50] text-[--green-700] ring-1 ring-[--green-200]' },
 };
 
 const STATUS_META: Record<Status, { label: string; icon: typeof Check; dot: string; pill: string }> = {

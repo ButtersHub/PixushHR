@@ -12,7 +12,7 @@ export interface TraceRowProps {
 export interface MessageBubbleProps {
   from?: 'agent' | 'employee';
   recipient?: string;
-  channel?: 'email' | 'teams' | 'slack';
+  channel?: 'email' | 'teams' | 'slack' | 'whatsapp';
   channelIcon?: React.ReactNode;
   timestamp?: string;
   content: string;

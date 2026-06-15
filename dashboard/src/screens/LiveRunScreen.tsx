@@ -55,6 +55,29 @@ export function LiveRunScreen({ autoTrigger = false }: LiveRunScreenProps) {
   const [runState, setRunState] = useState<RunState>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Simulate inbound (demo step 10) — manager messages the bot on WhatsApp.
+  const [simFrom, setSimFrom] = useState('+972546358808');
+  const [simBody, setSimBody] = useState('Hi Pixush, when does Maya start? Did we send the welcome?');
+  const [simRunId, setSimRunId] = useState<string | null>(null);
+  const [simError, setSimError] = useState('');
+
+  async function simulateInbound() {
+    setSimError('');
+    setSimRunId(null);
+    try {
+      const r = await fetch(`${ENGINE}/simulate/inbound`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: 'whatsapp', from: simFrom, body: simBody }),
+      });
+      if (!r.ok) throw new Error(`Engine returned ${r.status}`);
+      const body = await r.json();
+      setSimRunId(body.runId ?? null);
+    } catch (e) {
+      setSimError(e instanceof Error ? e.message : 'Could not simulate inbound');
+    }
+  }
+
   async function trigger() {
     setRunState('running');
     setResponse('');
@@ -121,6 +144,46 @@ export function LiveRunScreen({ autoTrigger = false }: LiveRunScreenProps) {
                 Scenario complete
               </span>
             )}
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Simulate inbound WhatsApp — demo step 10 */}
+      <Card>
+        <CardHeader title="Simulate inbound WhatsApp" subtitle="The hiring manager messages the bot" />
+        <CardBody>
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={simFrom}
+              onChange={(e) => setSimFrom(e.target.value)}
+              placeholder="+972546358808"
+              className="w-full rounded-md border border-[--border-default] bg-[--surface-card] px-2 py-1.5 text-[12px] text-[--text-primary] focus:border-[--papaya-300] focus:outline-none focus:ring-2 focus:ring-[--papaya-100]"
+            />
+            <textarea
+              value={simBody}
+              onChange={(e) => setSimBody(e.target.value)}
+              rows={2}
+              className="w-full rounded-md border border-[--border-default] bg-[--surface-card] px-2 py-1.5 text-[12px] text-[--text-primary] focus:border-[--papaya-300] focus:outline-none focus:ring-2 focus:ring-[--papaya-100]"
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={simulateInbound}
+                data-testid="simulate-inbound"
+              >
+                Simulate inbound
+              </Button>
+              {simRunId && (
+                <span className="font-mono text-[11px] text-[--text-tertiary]" data-testid="simulate-runid">
+                  run: {simRunId}
+                </span>
+              )}
+              {simError && (
+                <span className="text-[11px] text-[--red-600]">{simError}</span>
+              )}
+            </div>
           </div>
         </CardBody>
       </Card>

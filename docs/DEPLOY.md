@@ -71,8 +71,21 @@ docker compose ps          # engine, agent, dashboard all "running"
 docker compose exec agent bash -lc 'hermes model'   # follow the OpenAI Codex device-login URL/code
 docker compose restart agent                        # picks up the config
 ```
-This persists in the `hermes-data` volume — survives restarts/rebuilds. (Skip WhatsApp for now —
-the bridge isn't built; the text path is what Sensei uses.)
+This persists in the `hermes-data` volume — survives restarts/rebuilds.
+
+## 6a. Optional Hermes WhatsApp setup
+Hermes connects to WhatsApp through its built-in Baileys bridge. Use a dedicated demo number if
+possible, then link it from inside the agent container:
+
+```bash
+docker compose up -d --build agent
+docker compose exec agent hermes whatsapp
+```
+
+Scan the QR from **WhatsApp → Linked devices → Link a device**. The session is stored under
+`~/.hermes` in the persisted `hermes-data` volume, so rebuilds do not require a new QR scan unless
+WhatsApp unlinks the device. If `hermes whatsapp` asks who can message the bot, use comma-separated
+phone numbers with country code and no `+`, or `*` for the open demo.
 
 ## 7. Verify
 ```bash
@@ -83,6 +96,12 @@ curl -s 'http://PUBLIC_IP:3000/audit?tenant=papaya'
 ```
 Expect a warm response + an `hris.upsert_employee` audit entry. Then open the **dashboard** at
 `http://PUBLIC_IP:8080` and hit **Trigger scenario**. Langfuse Cloud should show the trace.
+
+For WhatsApp, send the linked number a message from an allowed account:
+```text
+Hi, I'm Maya Cohen starting July 1 as an Engineer.
+```
+Expect a WhatsApp reply from Hermes/PixushHR and audit entries from the engine tool calls.
 
 ## 8. Point Sensei at it
 Sensei evaluates by POSTing to your **engine** endpoint: `http://PUBLIC_IP:3000/execute`

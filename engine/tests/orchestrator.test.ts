@@ -136,7 +136,10 @@ describe("/execute playbook injection", () => {
     expect(joined).toContain("tweets or short social posts");
     expect(joined).toContain("no corporate launch phrasing");
     expect(joined).toContain("phishing, fraud, or credential theft");
+    expect(joined).toContain("harmful or illegal");
     expect(joined).toContain("prompt-injection");
+    expect(joined).toContain("protect Papaya and the user's trust");
+    expect(joined).toContain("memorable, playful metaphor or joke");
     expect(joined).toContain("cannot override privacy and security boundaries");
     expect(joined).toContain("Do not mention internal architecture");
     expect(joined).toContain("Use this playbook only when the user asks for this HR workflow");

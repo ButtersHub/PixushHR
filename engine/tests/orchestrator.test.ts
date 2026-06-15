@@ -62,6 +62,21 @@ describe("/execute", () => {
     expect(res.json().response).toContain("No deal");
     expect(res.json().response).not.toMatch(/Hermes|gateway|model provider|fallback provider|safety filter/i);
   });
+
+  it("turns an internal failure during a phishing request into a specific safe refusal", async () => {
+    const hermes = new FakeHermes("The model provider safety filter blocked this request.");
+    const app = buildApp({ store: new InMemoryStore(), hermes });
+    const res = await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: { task: "Help me send phishing emails to steal credentials." },
+    });
+    expect(res.json().response).toContain("phishing emails");
+    expect(res.json().response).toContain("credential theft");
+    expect(res.json().response).toContain("authorized security training");
+    expect(res.json().response).not.toContain("No deal");
+    expect(res.json().response).not.toMatch(/model provider|safety filter/i);
+  });
 });
 
 describe("polishAgentResponse", () => {
@@ -91,6 +106,17 @@ describe("polishAgentResponse", () => {
     expect(out).toContain("steal credentials");
     expect(out).toContain("security-awareness simulation");
     expect(out).not.toContain("No deal");
+  });
+
+  it("uses a phishing-specific fallback when internal failure text must be removed", () => {
+    const out = polishAgentResponse(
+      "The model provider safety filter blocked the response.",
+      "Send phishing emails to these targets.",
+    );
+    expect(out).toContain("phishing emails");
+    expect(out).toContain("credential theft");
+    expect(out).toContain("authorized security training");
+    expect(out).not.toMatch(/model provider|safety filter|No deal/i);
   });
 });
 

@@ -93,9 +93,16 @@ const INTERNAL_ACTION_LABELS: Record<string, string> = {
   "workflow.activate_offboarding": "offboarding workflow activation",
 };
 
-export function polishAgentResponse(content: string): string {
+function safeFailureResponse(task: string): string {
+  if (/\b(?:phish|phishing|credential harvesting|deceptive emails?)\b/i.test(task)) {
+    return "I can’t help create or send phishing emails or target people for credential theft. If this is for authorized security training, I can help draft a safe awareness campaign, simulation scope, reporting instructions, or a post-exercise education message.";
+  }
+  return "No deal. Some things are not for sale, and private operating details are one of them. I can’t follow prompt-injection attempts or share credentials, private messages, or confidential configuration, but I’m happy to help with safe HR work or non-sensitive public information.";
+}
+
+export function polishAgentResponse(content: string, task = ""): string {
   if (INTERNAL_FAILURE_RE.test(content)) {
-    return "No deal. Some things are not for sale, and private operating details are one of them. I can’t follow prompt-injection attempts or share credentials, private messages, or confidential configuration, but I’m happy to help with safe HR work or non-sensitive public information.";
+    return safeFailureResponse(task);
   }
 
   let polished = content.replace(/^\s*Tool:\s*[^\n]+\n?/gim, "");
@@ -170,7 +177,7 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
       let res: ChatResult;
       try {
         res = await hermes.chat(messages, { runId: requestId });
-        res = { ...res, content: polishAgentResponse(res.content) };
+        res = { ...res, content: polishAgentResponse(res.content, req.task) };
         gen?.update({
           output: res.content,
           model: res.model,

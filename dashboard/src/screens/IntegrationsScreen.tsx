@@ -8,8 +8,24 @@ import { Card, PageHeader, ConnectorIcon, Toggle, Table, Badge, LoadingState, Er
 
 const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
 
-interface Capability { name: string; label: string; description: string; wired?: boolean }
-interface Trigger { name: string; label: string; description: string }
+import { SchemaTree } from './workflow/Inspector/SchemaTree';
+import type { SchemaNode } from './workflow/types';
+
+interface Capability {
+  name: string;
+  label: string;
+  description: string;
+  wired?: boolean;
+  /** Set by the engine when a tool def backs this capability. */
+  kind?: 'engine-tool' | 'external-hermes' | null;
+  inputSchema?: SchemaNode | null;
+  outputSchema?: SchemaNode | null;
+}
+interface Trigger {
+  name: string;
+  label: string;
+  description: string;
+}
 
 interface Connector {
   id: string; name: string; role: string; description: string; icon: string;
@@ -272,6 +288,12 @@ interface InstalledPanelProps {
 function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onUninstall, onBrowse }: InstalledPanelProps) {
   const [subtab, setSubtab] = useState<'general' | 'mocked-data' | 'prod' | 'actions' | 'triggers'>('general');
   const [data, setData] = useState<Record<string, unknown>[]>([]);
+  const [selectedActionName, setSelectedActionName] = useState<string | null>(null);
+  const [selectedTriggerName, setSelectedTriggerName] = useState<string | null>(null);
+
+  // Reset side-panel selection whenever the master connector changes so an out-of-context
+  // capability id doesn't linger.
+  useEffect(() => { setSelectedActionName(null); setSelectedTriggerName(null); }, [current?.id]);
 
   useEffect(() => {
     if (subtab === 'mocked-data' && current) {
@@ -448,34 +470,54 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
                 <Zap size={14} className="mt-0.5 flex-shrink-0 text-[--papaya-600]" />
                 <p className="text-[12px] leading-relaxed text-[--text-secondary]">
                   These are the actions Pixush can invoke on this system while running a workflow.
-                  Actions marked <span className="font-semibold text-[--green-700]">Live</span> work now; the rest map the system's wider API.
+                  Actions marked <span className="font-semibold text-[--green-700]">Live</span> work now; the rest map the system's wider API. Click any action to see its contract.
                 </p>
               </div>
-              <ul className="space-y-1.5">
-                {current.capabilities.length === 0 && (
-                  <li className="rounded-lg border border-dashed border-[--border-default] p-3 text-center text-[12px] text-[--text-tertiary]">
-                    This connector exposes no actions.
-                  </li>
-                )}
-                {current.capabilities.map((cap) => (
-                  <li key={cap.name} className="flex items-center gap-3 rounded-lg border border-[--border-default] bg-[--surface-card] px-3 py-2 transition-colors hover:bg-[--surface-hover]">
-                    <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-[--border-default] bg-[--surface-sunken]">
-                      <ConnectorIcon name={current.icon} kind="logo" size={15} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium leading-tight text-[--text-primary]">{cap.label}</p>
-                      <p className="truncate text-[11px] text-[--text-tertiary]">{cap.description}</p>
-                    </div>
-                    {cap.wired ? (
-                      current.enabled
-                        ? <span className="ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-[--green-50] px-1.5 py-0.5 text-[10px] font-semibold text-[--green-700]"><Check size={10} /> Live</span>
-                        : <span className="ml-auto flex-shrink-0 rounded-full bg-[--surface-sunken] px-1.5 py-0.5 text-[10px] font-semibold text-[--text-tertiary]">Hidden</span>
-                    ) : (
-                      <span className="ml-auto flex-shrink-0 rounded-full border border-[--border-default] px-1.5 py-0.5 text-[10px] font-medium text-[--text-tertiary]">Available</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <div className="flex gap-3">
+                <ul className="flex-1 space-y-1.5">
+                  {current.capabilities.length === 0 && (
+                    <li className="rounded-lg border border-dashed border-[--border-default] p-3 text-center text-[12px] text-[--text-tertiary]">
+                      This connector exposes no actions.
+                    </li>
+                  )}
+                  {current.capabilities.map((cap) => {
+                    const active = selectedActionName === cap.name;
+                    return (
+                      <li key={cap.name}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedActionName(cap.name)}
+                          data-testid={`integration-action-${cap.name}`}
+                          className={[
+                            'flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+                            active
+                              ? 'border-[--papaya-300] bg-[--papaya-50]'
+                              : 'border-[--border-default] bg-[--surface-card] hover:bg-[--surface-hover]',
+                          ].join(' ')}
+                        >
+                          <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-[--border-default] bg-[--surface-sunken]">
+                            <ConnectorIcon name={current.icon} kind="logo" size={15} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-medium leading-tight text-[--text-primary]">{cap.label}</p>
+                            <p className="truncate text-[11px] text-[--text-tertiary]">{cap.description}</p>
+                          </div>
+                          {cap.wired ? (
+                            current.enabled
+                              ? <span className="ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-[--green-50] px-1.5 py-0.5 text-[10px] font-semibold text-[--green-700]"><Check size={10} /> Live</span>
+                              : <span className="ml-auto flex-shrink-0 rounded-full bg-[--surface-sunken] px-1.5 py-0.5 text-[10px] font-semibold text-[--text-tertiary]">Hidden</span>
+                          ) : (
+                            <span className="ml-auto flex-shrink-0 rounded-full border border-[--border-default] px-1.5 py-0.5 text-[10px] font-medium text-[--text-tertiary]">Available</span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <SchemaSidePanel
+                  capability={current.capabilities.find((c) => c.name === selectedActionName) ?? null}
+                />
+              </div>
             </div>
           )}
 
@@ -488,29 +530,104 @@ function InstalledPanel({ connectors, current, onSelect, onEnable, onConfig, onU
                   They're modelled here; wiring them to live webhooks is a later step.
                 </p>
               </div>
-              <ul className="space-y-1.5">
-                {(current.triggers ?? []).length === 0 && (
-                  <li className="rounded-lg border border-dashed border-[--border-default] p-3 text-center text-[12px] text-[--text-tertiary]">
-                    No triggers for this system yet.
-                  </li>
-                )}
-                {(current.triggers ?? []).map((t) => (
-                  <li key={t.name} className="flex items-center gap-3 rounded-lg border border-[--border-default] bg-[--surface-card] px-3 py-2 transition-colors hover:bg-[--surface-hover]">
-                    <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-[--border-default] bg-[--surface-sunken] text-[--blue-600]">
-                      <Webhook size={14} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium leading-tight text-[--text-primary]">{t.label}</p>
-                      <p className="truncate text-[11px] text-[--text-tertiary]">{t.description}</p>
-                    </div>
-                    <span className="ml-auto flex-shrink-0 rounded-full border border-[--border-default] px-1.5 py-0.5 font-mono text-[10px] text-[--text-tertiary]">{t.name}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="flex gap-3">
+                <ul className="flex-1 space-y-1.5">
+                  {(current.triggers ?? []).length === 0 && (
+                    <li className="rounded-lg border border-dashed border-[--border-default] p-3 text-center text-[12px] text-[--text-tertiary]">
+                      No triggers for this system yet.
+                    </li>
+                  )}
+                  {(current.triggers ?? []).map((t) => {
+                    const active = selectedTriggerName === t.name;
+                    return (
+                      <li key={t.name}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTriggerName(t.name)}
+                          data-testid={`integration-trigger-${t.name}`}
+                          className={[
+                            'flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+                            active
+                              ? 'border-[--blue-200] bg-[--blue-50]'
+                              : 'border-[--border-default] bg-[--surface-card] hover:bg-[--surface-hover]',
+                          ].join(' ')}
+                        >
+                          <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-[--border-default] bg-[--surface-sunken] text-[--blue-600]">
+                            <Webhook size={14} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-medium leading-tight text-[--text-primary]">{t.label}</p>
+                            <p className="truncate text-[11px] text-[--text-tertiary]">{t.description}</p>
+                          </div>
+                          <span className="ml-auto flex-shrink-0 rounded-full border border-[--border-default] px-1.5 py-0.5 font-mono text-[10px] text-[--text-tertiary]">{t.name}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <TriggerSidePanel
+                  trigger={(current.triggers ?? []).find((t) => t.name === selectedTriggerName) ?? null}
+                />
+              </div>
             </div>
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+/* ── Schema side panel for the Actions sub-tab ─────────────────── */
+function SchemaSidePanel({ capability }: { capability: Capability | null }) {
+  if (!capability) {
+    return (
+      <div className="w-72 flex-shrink-0 rounded-lg border border-dashed border-[--border-default] bg-[--surface-card] p-3 text-[12px] text-[--text-tertiary]">
+        Pick an action to see its input/output contract.
+      </div>
+    );
+  }
+  return (
+    <div className="w-72 flex-shrink-0 space-y-3 rounded-lg border border-[--border-default] bg-[--surface-card] p-3" data-testid="schema-side-panel">
+      <div>
+        <p className="font-mono text-[10px] text-[--text-tertiary]">{capability.name}</p>
+        <p className="mt-0.5 text-[13px] font-semibold text-[--text-primary]">{capability.label}</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-[--text-secondary]">{capability.description}</p>
+      </div>
+      <div>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[--text-tertiary]">Inputs</p>
+        {capability.inputSchema
+          ? <SchemaTree node={capability.inputSchema} />
+          : <p className="text-[11px] text-[--text-tertiary]">Not wired in this demo.</p>}
+      </div>
+      <div>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[--text-tertiary]">Output</p>
+        {capability.outputSchema
+          ? <SchemaTree node={capability.outputSchema} />
+          : <p className="text-[11px] text-[--text-tertiary]">Not wired in this demo.</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ── Side panel for the Triggers sub-tab ──────────────────────── */
+function TriggerSidePanel({ trigger }: { trigger: Trigger | null }) {
+  if (!trigger) {
+    return (
+      <div className="w-72 flex-shrink-0 rounded-lg border border-dashed border-[--border-default] bg-[--surface-card] p-3 text-[12px] text-[--text-tertiary]">
+        Pick a trigger to see its description.
+      </div>
+    );
+  }
+  return (
+    <div className="w-72 flex-shrink-0 space-y-3 rounded-lg border border-[--border-default] bg-[--surface-card] p-3" data-testid="trigger-side-panel">
+      <div>
+        <p className="font-mono text-[10px] text-[--text-tertiary]">{trigger.name}</p>
+        <p className="mt-0.5 text-[13px] font-semibold text-[--text-primary]">{trigger.label}</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-[--text-secondary]">{trigger.description}</p>
+      </div>
+      <p className="text-[11px] text-[--text-tertiary]">
+        Workflows pick a trigger in the editor's TriggerInspector. The sample payload that fires during Test flow lives on the workflow definition itself.
+      </p>
     </div>
   );
 }

@@ -530,18 +530,73 @@ export async function executeTool(
 }
 
 export interface CapabilityField { name: string; required: boolean; system: boolean; }
+
+/** JSON-serializable schema tree consumed by the dashboard's SchemaTree renderer.
+ *  Mirrors the subset of zod types we actually use (object/string/number/boolean/
+ *  array/literal/union/optional). */
+export type SchemaNode =
+  | { kind: "object"; fields: Record<string, SchemaNode>; required?: boolean }
+  | { kind: "string" | "number" | "boolean" | "unknown"; required?: boolean }
+  | { kind: "array"; items: SchemaNode; required?: boolean }
+  | { kind: "literal"; value: unknown; required?: boolean }
+  | { kind: "union"; options: SchemaNode[]; required?: boolean };
+
+export function schemaToTree(z?: z.ZodTypeAny): SchemaNode {
+  if (!z) return { kind: "unknown" };
+  const def = (z as unknown as { _def: { typeName: string } & Record<string, unknown> })._def;
+  switch (def.typeName) {
+    case "ZodObject": {
+      const shape = (z as z.ZodObject<z.ZodRawShape>).shape;
+      const fields: Record<string, SchemaNode> = {};
+      for (const [k, v] of Object.entries(shape)) {
+        const child = schemaToTree(v as z.ZodTypeAny);
+        child.required = !(v as z.ZodTypeAny).isOptional();
+        fields[k] = child;
+      }
+      return { kind: "object", fields };
+    }
+    case "ZodString": return { kind: "string" };
+    case "ZodNumber": return { kind: "number" };
+    case "ZodBoolean": return { kind: "boolean" };
+    case "ZodArray": return { kind: "array", items: schemaToTree(def.type as z.ZodTypeAny) };
+    case "ZodLiteral": return { kind: "literal", value: def.value };
+    case "ZodOptional": return schemaToTree(def.innerType as z.ZodTypeAny);
+    case "ZodEnum": return {
+      kind: "union",
+      options: (def.values as unknown[]).map((v) => ({ kind: "literal" as const, value: v })),
+    };
+    case "ZodUnion": return {
+      kind: "union",
+      options: (def.options as z.ZodTypeAny[]).map((o) => schemaToTree(o)),
+    };
+    default: return { kind: "unknown" };
+  }
+}
+
 export interface CapabilitySpec {
   name: string;
+  kind: ToolKind;
+  connector: string;
+  integration: string;
+  label: string;
   description: string;
   fields: CapabilityField[];
   sideEffectful: boolean;
+  inputSchema: SchemaNode;
+  outputSchema: SchemaNode;
 }
 
 export function capabilitySpecs(): CapabilitySpec[] {
   return Object.values(TOOLS).map((t) => ({
     name: t.name,
+    kind: t.kind,
+    connector: t.connector,
+    integration: t.integration,
+    label: t.label,
     description: t.purpose,
     sideEffectful: t.sideEffectful,
+    inputSchema: schemaToTree(t.schema),
+    outputSchema: schemaToTree(t.outputShape),
     fields: Object.entries(t.schema.shape).map(([name, field]) => ({
       name,
       required: !(field as z.ZodTypeAny).isOptional(),

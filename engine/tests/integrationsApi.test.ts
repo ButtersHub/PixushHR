@@ -43,4 +43,17 @@ describe("/integrations API", () => {
     const res = await app().inject({ method: "POST", url: "/integrations/nope/install" });
     expect(res.statusCode).toBe(404);
   });
+
+  it("each capability row surfaces kind + inputSchema + outputSchema for wired tools", async () => {
+    const res = await app().inject({ method: "GET", url: "/integrations?tenant=papaya" });
+    const comeet = res.json().find((c: any) => c.id === "comeet");
+    const getContract = comeet.capabilities.find((c: any) => c.name === "ats.get_contract");
+    expect(getContract.kind).toBe("engine-tool");
+    expect(getContract.inputSchema).toMatchObject({ kind: "object" });
+    expect(getContract.outputSchema).toMatchObject({ kind: "object" });
+    // Non-wired capabilities have null schemas
+    const getCandidate = comeet.capabilities.find((c: any) => c.name === "ats.get_candidate");
+    expect(getCandidate.inputSchema).toBeNull();
+    expect(getCandidate.outputSchema).toBeNull();
+  });
 });

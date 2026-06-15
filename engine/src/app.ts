@@ -3,7 +3,7 @@ import cors from "@fastify/cors";
 import { z } from "zod";
 import type { InMemoryStore } from "./store.js";
 import type { HermesClient } from "./hermes.js";
-import { executeTool, TOOLS, capabilitySpecs } from "./tools.js";
+import { executeTool, TOOLS, capabilitySpecs, schemaToTree } from "./tools.js";
 import { runExecute, runWorkflow } from "./orchestrator.js";
 import { randomUUID } from "node:crypto";
 import { gateToolCall, CONNECTORS, connectorState, defaultState, roleForConnector, enabledTriggers } from "./integrations.js";
@@ -189,8 +189,20 @@ export function buildApp(deps: Deps): FastifyInstance {
     const tenant = req.query.tenant ?? "papaya";
     return CONNECTORS.map((def) => {
       const state = connectorState(store, tenant, def);
-      const tools = Object.values(TOOLS).filter((t) => t.integration === def.role).map((t) => t.name);
-      return { ...def, ...state, tools };
+      // Tools belonging to THIS connector (not just the role-port) — the dashboard's
+      // schema side panel renders these as the Actions list.
+      const ownTools = Object.values(TOOLS).filter((t) => t.connector === def.id);
+      const tools = ownTools.map((t) => t.name);
+      const capabilities = def.capabilities.map((cap) => {
+        const tool = TOOLS[cap.name];
+        return {
+          ...cap,
+          kind: tool?.kind ?? null,
+          inputSchema: tool ? schemaToTree(tool.schema) : null,
+          outputSchema: tool ? schemaToTree(tool.outputShape) : null,
+        };
+      });
+      return { ...def, ...state, tools, capabilities };
     });
   });
 

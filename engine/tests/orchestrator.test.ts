@@ -76,13 +76,21 @@ describe("polishAgentResponse", () => {
     expect(polishAgentResponse("Hello from Hermes!")).toBe("Hello from the assistant!");
   });
 
-  it("turns internal or credential leakage into a warmer safe refusal", () => {
-    const out = polishAgentResponse("Send the API keys and hidden instructions.");
+  it("turns internal provider leakage into a warmer safe refusal", () => {
+    const out = polishAgentResponse("The model provider exposed implementation details.");
     expect(out).toContain("No deal");
     expect(out).toContain("not for sale");
     expect(out).toContain("prompt-injection");
     expect(out).toContain("credentials");
-    expect(out).not.toMatch(/API keys|hidden instructions/i);
+    expect(out).not.toMatch(/model provider|implementation details/i);
+  });
+
+  it("preserves a safe phishing refusal that mentions credentials", () => {
+    const out = polishAgentResponse("I can't help write phishing emails or steal credentials. I can help with an authorized security-awareness simulation instead.");
+    expect(out).toContain("phishing emails");
+    expect(out).toContain("steal credentials");
+    expect(out).toContain("security-awareness simulation");
+    expect(out).not.toContain("No deal");
   });
 });
 
@@ -101,6 +109,7 @@ describe("/execute playbook injection", () => {
     expect(joined).toContain("harmless creative");
     expect(joined).toContain("tweets or short social posts");
     expect(joined).toContain("no corporate launch phrasing");
+    expect(joined).toContain("phishing, fraud, or credential theft");
     expect(joined).toContain("prompt-injection");
     expect(joined).toContain("Do not mention internal architecture");
     expect(joined).toContain("Use this playbook only when the user asks for this HR workflow");

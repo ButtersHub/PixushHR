@@ -203,6 +203,35 @@ const activateOffboardingOutput = z.object({
   }),
 });
 
+// ── External-Hermes virtual tools ──────────────────────────────────────────
+// These are NOT executed by the engine. Hermes sends via its native gateway,
+// then posts back via /side-effect to record the audit + message entry.
+
+const gmailSendSchema = z.object({
+  tenant: z.string(),
+  to: z.string(),
+  subject: z.string(),
+  body: z.string(),
+  from: z.string().optional(),
+});
+const gmailSendOutput = z.object({
+  ok: z.boolean(),
+  messageId: z.string(),
+  channel: z.literal("email"),
+});
+
+const whatsappSendSchema = z.object({
+  tenant: z.string(),
+  to: z.string(),
+  body: z.string(),
+  mediaUrl: z.string().optional(),
+});
+const whatsappSendOutput = z.object({
+  ok: z.boolean(),
+  messageId: z.string(),
+  channel: z.literal("whatsapp"),
+});
+
 export const TOOLS: Record<string, ToolDef> = {
   "hris.upsert_employee": {
     name: "hris.upsert_employee",
@@ -382,6 +411,40 @@ export const TOOLS: Record<string, ToolDef> = {
     summarize: (args) => ({
       target: String(args.tenant ?? "—"),
       summary: "Retrieved branding pack",
+    }),
+  },
+
+  "gmail.send_email": {
+    name: "gmail.send_email",
+    kind: "external-hermes",
+    integration: "Channels",
+    connector: "gmail",
+    label: "Send welcome email",
+    purpose:
+      "Send a warm welcome email via Hermes's native Gmail gateway. The engine does not execute this — Hermes does, then calls back via /side-effect.",
+    schema: gmailSendSchema,
+    outputShape: gmailSendOutput,
+    sideEffectful: true,
+    summarize: (args) => ({
+      target: String(args.to ?? "—"),
+      summary: `Sent welcome email to ${args.to}`,
+    }),
+  },
+
+  "whatsapp.send_message": {
+    name: "whatsapp.send_message",
+    kind: "external-hermes",
+    integration: "Channels",
+    connector: "whatsapp",
+    label: "Send WhatsApp",
+    purpose:
+      "Send a WhatsApp message via Hermes's native gateway. The engine does not execute this — Hermes does, then calls back via /side-effect.",
+    schema: whatsappSendSchema,
+    outputShape: whatsappSendOutput,
+    sideEffectful: true,
+    summarize: (args) => ({
+      target: String(args.to ?? "—"),
+      summary: `Sent WhatsApp to ${args.to}`,
     }),
   },
 

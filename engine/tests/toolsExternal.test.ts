@@ -33,6 +33,25 @@ describe("ToolDef metadata", () => {
     expect(TOOLS["workflow.activate_offboarding"].outputShape).toBeInstanceOf(z.ZodObject);
   });
 
+  it("registers gmail.send_email + whatsapp.send_message virtual tools", () => {
+    expect(TOOLS["gmail.send_email"]).toBeDefined();
+    expect(TOOLS["whatsapp.send_message"]).toBeDefined();
+  });
+
+  it("virtual tools have kind=external-hermes and no run", () => {
+    expect(TOOLS["gmail.send_email"].kind).toBe("external-hermes");
+    expect(TOOLS["gmail.send_email"].run).toBeUndefined();
+    expect(TOOLS["whatsapp.send_message"].kind).toBe("external-hermes");
+    expect(TOOLS["whatsapp.send_message"].run).toBeUndefined();
+  });
+
+  it("virtual tools carry their own connector ids and Channels role-port", () => {
+    expect(TOOLS["gmail.send_email"].connector).toBe("gmail");
+    expect(TOOLS["whatsapp.send_message"].connector).toBe("whatsapp");
+    expect(TOOLS["gmail.send_email"].integration).toBe("Channels");
+    expect(TOOLS["whatsapp.send_message"].integration).toBe("Channels");
+  });
+
   it("connector ids match real connector definitions", () => {
     expect(TOOLS["hris.upsert_employee"].connector).toBe("shapes");
     expect(TOOLS["ats.get_contract"].connector).toBe("comeet");

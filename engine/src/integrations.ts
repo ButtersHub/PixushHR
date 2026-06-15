@@ -243,23 +243,34 @@ export function roleEnabled(store: InMemoryStore, tenant: string, role: RolePort
   return enabledConnectorsForRole(store, tenant, role).length > 0;
 }
 
+/** Is the specific connector (by id, e.g. "gmail") installed and enabled? */
+export function connectorEnabled(store: InMemoryStore, tenant: string, connectorId: string): boolean {
+  const def = CONNECTORS.find((c) => c.id === connectorId);
+  if (!def) return false;
+  const state = connectorState(store, tenant, def);
+  return state.installed && state.enabled;
+}
+
 export function availableTools(store: InMemoryStore, tenant: string): string[] {
   return Object.values(TOOLS)
-    .filter((t) => roleEnabled(store, tenant, t.integration as RolePort))
+    .filter((t) => connectorEnabled(store, tenant, t.connector))
     .map((t) => t.name);
 }
 
 export function gateToolCall(store: InMemoryStore, tenant: string, toolName: string): void {
   const tool = TOOLS[toolName];
   if (!tool) return;
-  const role = tool.integration as RolePort;
-  const enabled = enabledConnectorsForRole(store, tenant, role);
-  if (enabled.length === 0) throw new Error(`${role} is not enabled`);
-  const failing = enabled.find((c) => c.state.mode === "mock" && c.state.config.mock.failNext);
-  if (failing) {
-    failing.state.config.mock = { ...failing.state.config.mock, failNext: false };
-    store.setConnectorState(tenant, failing.def.id, failing.state);
-    throw new Error(`injected failure on ${role}`);
+  if (!connectorEnabled(store, tenant, tool.connector)) {
+    throw new Error(`${tool.connector} is not enabled`);
+  }
+  // Single-connector failNext support — applies whether engine-tool or external-hermes.
+  const def = CONNECTORS.find((c) => c.id === tool.connector);
+  if (!def) return;
+  const state = connectorState(store, tenant, def);
+  if (state.mode === "mock" && state.config.mock.failNext) {
+    const cleared = { ...state, config: { ...state.config, mock: { ...state.config.mock, failNext: false } } };
+    store.setConnectorState(tenant, def.id, cleared);
+    throw new Error(`injected failure on ${tool.connector}`);
   }
 }
 

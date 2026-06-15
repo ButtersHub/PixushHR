@@ -45,4 +45,20 @@ describe("integration registry", () => {
     expect(() => gateToolCall(s, "papaya", "channel.send_message")).toThrow(/injected failure/i);
     expect(() => gateToolCall(s, "papaya", "channel.send_message")).not.toThrow();
   });
+
+  it("availableTools filters by specific connector (gmail does not leak via Channels role-port)", () => {
+    const s = new InMemoryStore();
+    // teams is seeded so Channels role-port is enabled — but gmail isn't installed
+    expect(availableTools(s, "papaya")).not.toContain("gmail.send_email");
+    expect(availableTools(s, "papaya")).not.toContain("whatsapp.send_message");
+    // installing+enabling gmail should let it through
+    s.setConnectorState("papaya", "gmail", { installed: true, enabled: true, mode: "mock", config: { mock: {}, prod: {} } });
+    expect(availableTools(s, "papaya")).toContain("gmail.send_email");
+    expect(availableTools(s, "papaya")).not.toContain("whatsapp.send_message");
+  });
+
+  it("gateToolCall rejects a virtual tool whose connector is disabled", () => {
+    const s = new InMemoryStore();
+    expect(() => gateToolCall(s, "papaya", "gmail.send_email")).toThrow(/gmail/i);
+  });
 });

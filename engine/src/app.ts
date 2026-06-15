@@ -52,7 +52,14 @@ function roleRecords(store: InMemoryStore, tenant: string, role: string): unknow
 
 export function buildApp(deps: Deps): FastifyInstance {
   const app = Fastify({ logger: false });
-  app.register(cors, { origin: true });
+  // @fastify/cors v11 defaults `methods` to GET,HEAD,POST — so preflight
+  // blocks PUT/PATCH/DELETE. The workflow editor save (PUT /workflows/:id),
+  // workflow delete, and a few integration config calls need those verbs.
+  // Reflect the request Origin and explicitly allow every verb we use.
+  app.register(cors, {
+    origin: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  });
   const { store } = deps;
 
   app.get("/health", async () => ({ status: "ok" }));

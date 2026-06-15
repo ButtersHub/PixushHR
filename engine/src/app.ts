@@ -87,6 +87,81 @@ export function buildApp(deps: Deps): FastifyInstance {
     return enabledTriggers(store, tenant);
   });
 
+  // ── Hermes callback for native-gateway channel sends/receives ────────────
+  // Hermes's WhatsApp/Email gateways are self-contained — they don't post webhooks
+  // back to us. The agent calls this endpoint via the `record-side-effect` skill
+  // after every native send/receive so the audit log + Messages screen stay accurate.
+  const sideEffectSchema = z.object({
+    channel: z.enum(["email", "whatsapp"]),
+    direction: z.enum(["outbound", "inbound"]),
+    to: z.string().optional(),
+    from: z.string().optional(),
+    subject: z.string().optional(),
+    body: z.string(),
+    runId: z.string().optional(),
+    tenant: z.string().optional(),
+  });
+
+  app.post("/side-effect", async (req, reply) => {
+    const parsed = sideEffectSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { ok: false, error: "invalid side-effect payload" };
+    }
+    const tenant = parsed.data.tenant ?? "papaya";
+    const runId = parsed.data.runId ?? store.currentActiveRunId(tenant);
+    const integration = parsed.data.channel === "email" ? "Gmail" : "WhatsApp";
+
+    const inbound = parsed.data.direction === "inbound";
+    const msg = store.addMessage({
+      tenant,
+      from: inbound ? (parsed.data.from ?? "external") : "agent",
+      to: inbound ? "agent" : (parsed.data.to ?? "—"),
+      role: inbound ? "inbound" : "employee",
+      channel: parsed.data.channel,
+      body: parsed.data.body,
+      direction: parsed.data.direction,
+    });
+
+    const capability = inbound
+      ? `${parsed.data.channel}.message_received`
+      : `${parsed.data.channel}.send_message`;
+    const target = inbound ? (parsed.data.from ?? "—") : (parsed.data.to ?? "—");
+    const bodyPreview = parsed.data.body.length > 60
+      ? `${parsed.data.body.slice(0, 60)}…`
+      : parsed.data.body;
+    const summary = inbound
+      ? `Received ${parsed.data.channel} from ${target}: "${bodyPreview}"`
+      : parsed.data.subject
+        ? `Sent ${parsed.data.channel} to ${target}: "${parsed.data.subject}"`
+        : `Sent ${parsed.data.channel} to ${target}`;
+
+    const label = inbound
+      ? `Inbound ${parsed.data.channel}`
+      : parsed.data.channel === "email" ? "Send welcome email" : "Send WhatsApp";
+
+    store.audit({
+      tenant,
+      capability,
+      label,
+      integration,
+      target,
+      summary,
+      actor: "hermes-native",
+      status: "success",
+      runId,
+      inputs: {
+        to: parsed.data.to,
+        from: parsed.data.from,
+        subject: parsed.data.subject,
+        body: parsed.data.body,
+      },
+      outputs: { ok: true, messageId: msg.id },
+    });
+
+    return { ok: true, messageId: msg.id };
+  });
+
   app.get<{ Querystring: { tenant?: string } }>("/messages", async (req) => {
     const tenant = req.query.tenant ?? "papaya";
     return store.getMessages(tenant);

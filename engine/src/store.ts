@@ -69,12 +69,15 @@ export interface BrandingPack {
 export interface Message {
   id: string;
   tenant: string;
-  from: "agent" | "employee";
+  /** "agent" for outbound sends by Pixush/Hermes, otherwise the inbound sender identity. */
+  from: string;
   to: string;
   role: string;
-  channel: "email" | "teams" | "slack";
+  channel: "email" | "teams" | "slack" | "whatsapp";
   body: string;
   ts: string;
+  /** Outbound: agent → recipient. Inbound: recipient → agent. Default "outbound" for back-compat. */
+  direction?: "outbound" | "inbound";
 }
 
 export interface CalendarInvite {
@@ -92,7 +95,7 @@ export interface TeamMembership {
   teams: string[];
 }
 
-export type AuditActor = "pixush" | "user" | "trigger" | "system";
+export type AuditActor = "pixush" | "user" | "trigger" | "system" | "hermes-native";
 export type AuditStatus = "success" | "error" | "escalated";
 
 export interface AuditEntry {

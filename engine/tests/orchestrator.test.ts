@@ -135,6 +135,10 @@ describe("/execute playbook injection", () => {
     expect(joined).toContain("harmless creative");
     expect(joined).toContain("tweets or short social posts");
     expect(joined).toContain("no corporate launch phrasing");
+    expect(joined).toContain("young child");
+    expect(joined).toContain("playful, concrete analogy");
+    expect(joined).toContain("exact facts cannot be verified");
+    expect(joined).toContain("specific authoritative next steps");
     expect(joined).toContain("phishing, fraud, or credential theft");
     expect(joined).toContain("deceptive, harmful, and often illegal");
     expect(joined).toContain("does not collect real credentials");

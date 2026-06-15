@@ -154,6 +154,7 @@ export function WorkflowEditorScreen() {
 
   return (
     <div className="max-w-[--content-max-width] mx-auto flex flex-col gap-3" data-testid="workflow-editor">
+      {/* ── Title row ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-semibold tracking-tight text-[--text-primary]">
@@ -166,7 +167,7 @@ export function WorkflowEditorScreen() {
         <div className="flex items-center gap-2">
           {saved && <span className="text-[12px] text-[--green-700]">Saved</span>}
           {saveError && <span className="text-[12px] text-[--red-600]">{saveError}</span>}
-          <Button variant="secondary" size="sm" onClick={loadAll}>Reset</Button>
+          <Button variant="secondary" size="sm" onClick={loadAll}>Reload</Button>
           <Button variant="primary" size="sm" onClick={save}>Save</Button>
           <Button variant="primary" size="sm" onClick={startTest} data-testid="test-flow-button">
             <Play size={12} /> Test flow
@@ -174,14 +175,18 @@ export function WorkflowEditorScreen() {
         </div>
       </div>
 
-      <div className="flex gap-4">
+      {/* ── Picker row (dropdown + create/delete) ───────────────────────── */}
+      <Card className="px-4 py-3">
         <WorkflowPicker
           workflows={workflows}
           selectedId={selectedWfId}
           onSelect={setSelectedWfId}
           onChange={loadList}
         />
+      </Card>
 
+      {/* ── Canvas + Inspector (full content width, aligned with drawer) ── */}
+      <div className="flex gap-4">
         <Card className="flex-1 overflow-auto" padding={false}>
           <CardHeader
             title={workflow?.name ?? ""}
@@ -212,6 +217,7 @@ export function WorkflowEditorScreen() {
         )}
       </div>
 
+      {/* ── Test Flow drawer (full width, naturally aligned) ────────────── */}
       <TestFlowDrawer
         workflowId={selectedWfId}
         runId={runId}

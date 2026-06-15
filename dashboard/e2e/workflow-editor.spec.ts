@@ -6,15 +6,19 @@ test.describe("Workflow editor (rebuilt — V2 cards + schema-tree inspector + T
     await page.getByRole("button", { name: /workflow editor/i }).click();
     await expect(page.getByTestId("workflow-editor")).toBeVisible();
     await expect(page.getByTestId("workflow-picker")).toBeVisible();
-    await expect(page.getByTestId("picker-onboarding")).toBeVisible();
-    await expect(page.getByTestId("picker-offboarding")).toBeVisible();
+    // The per-workflow anchors are off-screen testid-only handles for e2e clicks; the visible
+    // affordance is the Dropdown. Assert existence rather than visibility.
+    await expect(page.getByTestId("picker-onboarding")).toHaveCount(1);
+    await expect(page.getByTestId("picker-offboarding")).toHaveCount(1);
 
     // Onboarding is selected by default — trigger + at least one action card.
     await expect(page.getByTestId("trigger-card")).toBeVisible();
     await expect(page.getByTestId("action-card-1")).toBeVisible();
 
-    // Switch to offboarding — trigger card updates.
-    await page.getByTestId("picker-offboarding").click();
+    // Switch to offboarding via the Dropdown UI (click trigger → click option).
+    const picker = page.getByTestId("workflow-picker");
+    await picker.locator("button").first().click();
+    await page.getByRole("option").filter({ hasText: /offboarding/i }).first().click();
     await expect(page.getByTestId("trigger-card")).toContainText(/employee.terminated/);
   });
 

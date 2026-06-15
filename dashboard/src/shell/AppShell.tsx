@@ -13,6 +13,8 @@ import {
   Database,
 } from 'lucide-react';
 
+const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
+
 export function AppShell() {
   const [activeScreen, setActiveScreen] = useState<Screen>('live-run');
   const [triggerKey, setTriggerKey] = useState(0);
@@ -22,8 +24,14 @@ export function AppShell() {
     setTriggerKey(k => k + 1);
   }
 
-  function handleReset() {
-    setTriggerKey(0);
+  async function handleReset() {
+    // Wipe the engine store + reseed fixtures so the audit log + Messages screen come back empty.
+    try {
+      await fetch(`${ENGINE}/reset`, { method: 'POST' });
+    } catch {
+      /* swallow — UI still refreshes below */
+    }
+    setTriggerKey(k => k + 1); // force-remount the active screen so it refetches
     setActiveScreen('live-run');
   }
 

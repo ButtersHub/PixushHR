@@ -14,6 +14,10 @@ Options:
   --source <source>     Source passed to Pixush. Default: agentalent-handshake
   --max-tasks <n>       Safety cap. Default: ${DEFAULT_MAX_TASKS}
   --timeout-ms <n>      Per-request timeout. Default: 120000
+  --resume-submit-url <url>
+                       Resume by submitting a known answer to this submit URL first
+  --resume-response <text>
+                       Response to submit with --resume-submit-url
   --dry-run             Start/read tasks, but do not submit answers
   --help                Show this help
 
@@ -30,6 +34,8 @@ function parseArgs(argv) {
     source: "agentalent-handshake",
     maxTasks: DEFAULT_MAX_TASKS,
     timeoutMs: 120_000,
+    resumeSubmitUrl: "",
+    resumeResponse: "",
     dryRun: false,
   };
   const positional = [];
@@ -51,6 +57,10 @@ function parseArgs(argv) {
       opts.maxTasks = Number.parseInt(requireValue(argv, ++i, arg), 10);
     } else if (arg === "--timeout-ms") {
       opts.timeoutMs = Number.parseInt(requireValue(argv, ++i, arg), 10);
+    } else if (arg === "--resume-submit-url") {
+      opts.resumeSubmitUrl = requireValue(argv, ++i, arg);
+    } else if (arg === "--resume-response") {
+      opts.resumeResponse = requireValue(argv, ++i, arg);
     } else if (arg.startsWith("--")) {
       throw new Error(`Unknown option: ${arg}`);
     } else {
@@ -59,6 +69,8 @@ function parseArgs(argv) {
   }
 
   if (!positional[0]) throw new Error("Missing handshake URL.");
+  if (opts.resumeSubmitUrl && !opts.resumeResponse) throw new Error("--resume-submit-url requires --resume-response.");
+  if (opts.resumeResponse && !opts.resumeSubmitUrl) throw new Error("--resume-response requires --resume-submit-url.");
   if (!Number.isFinite(opts.maxTasks) || opts.maxTasks < 1) throw new Error("--max-tasks must be a positive number.");
   if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs < 1000) throw new Error("--timeout-ms must be at least 1000.");
   return { ...opts, handshakeUrl: positional[0] };
@@ -181,7 +193,22 @@ async function main() {
 
   console.log(`Starting Sensei handshake: ${opts.handshakeUrl}`);
   console.log(`Pixush endpoint: ${opts.agentUrl}`);
-  let payload = await fetchJson(opts.handshakeUrl, { method: "POST" }, opts.timeoutMs);
+  let payload;
+  if (opts.resumeSubmitUrl) {
+    console.log(`Resuming from submit URL: ${opts.resumeSubmitUrl}`);
+    payload = await fetchJson(resolveUrl(opts.resumeSubmitUrl, opts.handshakeUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ response: opts.resumeResponse }),
+    }, opts.timeoutMs);
+    const feedback = summarizeFeedback(payload);
+    if (feedback) {
+      console.log("\n--- Sensei feedback ---");
+      console.log(feedback);
+    }
+  } else {
+    payload = await fetchJson(opts.handshakeUrl, { method: "POST" }, opts.timeoutMs);
+  }
 
   for (let index = 1; index <= opts.maxTasks; index += 1) {
     if (isComplete(payload)) {

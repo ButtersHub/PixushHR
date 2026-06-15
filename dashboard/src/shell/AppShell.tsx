@@ -7,7 +7,7 @@ import { MessagesScreen } from '../screens/MessagesScreen';
 import { AuditScreen } from '../screens/AuditScreen';
 import { IntegrationsScreen } from '../screens/IntegrationsScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
-import { WorkflowEditorScreen } from '../screens/WorkflowEditorScreen';
+import { WorkflowEditorScreen } from '../screens/workflow/WorkflowEditorScreen';
 import {
   Users,
   Database,

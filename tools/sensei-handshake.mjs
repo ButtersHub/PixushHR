@@ -124,6 +124,14 @@ function extractSubmitUrl(payload) {
   return firstString(payload?.submit_url, payload?.submitUrl, payload?.url);
 }
 
+function resolveUrl(url, baseUrl) {
+  try {
+    return new URL(url, baseUrl).href;
+  } catch {
+    throw new Error(`Invalid URL returned by handshake API: ${url}`);
+  }
+}
+
 function extractTaskId(payload) {
   const taskish = payload?.task ?? payload?.next_task ?? payload?.nextTask ?? payload?.challenge ?? payload?.item;
   if (taskish && typeof taskish === "object") {
@@ -202,7 +210,7 @@ async function main() {
       return;
     }
 
-    payload = await fetchJson(submitUrl, {
+    payload = await fetchJson(resolveUrl(submitUrl, opts.handshakeUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ response: answer }),

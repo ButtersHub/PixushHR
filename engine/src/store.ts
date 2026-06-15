@@ -66,6 +66,8 @@ export interface Manager {
   name: string;
   department: string;
   cannedAnswer: string;
+  /** Demo target for outbound WhatsApp + inbound Q&A. */
+  phone?: string;
 }
 
 export interface Department {

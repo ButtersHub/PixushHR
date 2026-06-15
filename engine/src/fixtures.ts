@@ -11,6 +11,7 @@ export function seedFixtures(store: InMemoryStore, tenant = "papaya"): void {
     id: "m1",
     name: "Daniel Levi",
     department: "Engineering",
+    phone: "+972546358808",
     cannedAnswer:
       "Maya joins the Payments squad. Her buddy is Noa Bar-On and her first project is the " +
       "reconciliation service. Please seat her near the Payments pod.",

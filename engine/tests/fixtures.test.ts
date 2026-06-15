@@ -43,4 +43,18 @@ describe("seedFixtures — A10", () => {
     seedFixtures(s);
     expect(s.getWorkflow("papaya", "onboarding")?.root).toBeTruthy();
   });
+
+  it("seeds both onboarding + offboarding workflows", () => {
+    const s = new InMemoryStore();
+    seedFixtures(s);
+    const ids = s.listWorkflows("papaya").map((w) => w.id);
+    expect(ids).toContain("onboarding");
+    expect(ids).toContain("offboarding");
+  });
+
+  it("seeds the hiring manager with a demo phone number", () => {
+    const s = new InMemoryStore();
+    seedFixtures(s);
+    expect(s.getManager("papaya", "m1")?.phone).toBe("+972546358808");
+  });
 });

@@ -57,7 +57,7 @@ export function serializePlaybook(wf: WorkflowDefinition, availableTools: string
 
   return [
     `${wf.name.toUpperCase()} PLAYBOOK`,
-    `Trigger: ${wf.trigger.type}`,
+    `Trigger: ${wf.trigger.type} (${wf.trigger.connector})`,
     ``,
     `Use this playbook only when the user asks for this HR workflow or a concrete business action.`,
     `For general questions, harmless creative prompts, or public-profile prompts, do not call tools; answer directly in the requested format.`,

@@ -28,7 +28,11 @@ const workflowSchema = z.object({
   id: z.string(),
   name: z.string(),
   version: z.number(),
-  trigger: z.object({ type: z.string(), filter: z.string().optional() }),
+  trigger: z.object({
+    type: z.string(),
+    connector: z.string(),
+    sample: z.record(z.unknown()).optional(),
+  }),
   root: z.string(),
   nodes: z.record(nodeSchema),
 });

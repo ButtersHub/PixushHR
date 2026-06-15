@@ -25,7 +25,7 @@ describe("/workflows + /capabilities", () => {
 
   it("PUT /workflows/:id replaces the stored definition", async () => {
     const { store, app: a } = app();
-    const def = { id: "onboarding", name: "Onboarding v2", version: 2, trigger: { type: "onboard" }, root: "x1", nodes: { x1: { id: "x1", kind: "action", capability: "hris.upsert_employee", input: {} } } };
+    const def = { id: "onboarding", name: "Onboarding v2", version: 2, trigger: { type: "onboard", connector: "comeet" }, root: "x1", nodes: { x1: { id: "x1", kind: "action", capability: "hris.upsert_employee", input: {} } } };
     const res = await a.inject({ method: "PUT", url: "/workflows/onboarding?tenant=papaya", payload: def });
     expect(res.statusCode).toBe(200);
     expect(store.getWorkflow("papaya", "onboarding")?.name).toBe("Onboarding v2");
@@ -34,6 +34,22 @@ describe("/workflows + /capabilities", () => {
   it("PUT rejects a malformed definition", async () => {
     const res = await app().app.inject({ method: "PUT", url: "/workflows/onboarding?tenant=papaya", payload: { id: "onboarding" } });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("PUT rejects a trigger without connector", async () => {
+    const { app: a } = app();
+    const def = { id: "onboarding", name: "X", version: 1, trigger: { type: "onboard" }, root: "n1", nodes: { n1: { id: "n1", kind: "action", capability: "hris.upsert_employee", input: {} } } };
+    const res = await a.inject({ method: "PUT", url: "/workflows/onboarding?tenant=papaya", payload: def });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("PUT accepts a trigger with type + connector + optional sample", async () => {
+    const { store, app: a } = app();
+    const def = { id: "onboarding", name: "X", version: 1, trigger: { type: "candidate.hired", connector: "comeet", sample: { candidateId: "c1" } }, root: "n1", nodes: { n1: { id: "n1", kind: "action", capability: "hris.upsert_employee", input: {} } } };
+    const res = await a.inject({ method: "PUT", url: "/workflows/onboarding?tenant=papaya", payload: def });
+    expect(res.statusCode).toBe(200);
+    expect(store.getWorkflow("papaya", "onboarding")?.trigger.connector).toBe("comeet");
+    expect((store.getWorkflow("papaya", "onboarding")?.trigger.sample as any)?.candidateId).toBe("c1");
   });
 
   it("GET /capabilities returns specs with fields", async () => {

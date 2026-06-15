@@ -6,7 +6,14 @@ export const onboardingWorkflow: WorkflowDefinition = {
   id: "onboarding",
   name: "Onboarding",
   version: 1,
-  trigger: { type: "onboard" },
+  trigger: {
+    type: "candidate.hired",
+    connector: "comeet",
+    sample: {
+      candidateId: "c1",
+      candidate: { name: "Maya Cohen", email: "maya@cohen.io", role: "Engineer" },
+    },
+  },
   root: "n1",
   nodes: {
     n1: { id: "n1", kind: "action", capability: "ats.get_contract", audience: "hr",

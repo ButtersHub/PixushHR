@@ -4,7 +4,16 @@ export const offboardingWorkflow: WorkflowDefinition = {
   id: "offboarding",
   name: "Offboarding",
   version: 1,
-  trigger: { type: "offboard" },
+  trigger: {
+    type: "employee.terminated",
+    connector: "shapes",
+    sample: {
+      employeeId: "e1",
+      employeeName: "Daniel Rosen",
+      effectiveDate: "2026-06-28",
+      reason: "role eliminated",
+    },
+  },
   root: "n1",
   nodes: {
     n1: {

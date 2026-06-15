@@ -82,7 +82,7 @@ describe("serializePlaybook", () => {
 
   it("emits a 'use native gateway + call record_side_effect' block for external-hermes actions", () => {
     const wf = {
-      id: "t", name: "Test", version: 1, trigger: { type: "manual" }, root: "n1",
+      id: "t", name: "Test", version: 1, trigger: { type: "manual", connector: "manual" }, root: "n1",
       nodes: {
         n1: {
           id: "n1", kind: "action", capability: "gmail.send_email",
@@ -104,7 +104,7 @@ describe("serializePlaybook", () => {
 
   it("emits the same shape for whatsapp.send_message", () => {
     const wf = {
-      id: "t", name: "Test", version: 1, trigger: { type: "manual" }, root: "n1",
+      id: "t", name: "Test", version: 1, trigger: { type: "manual", connector: "manual" }, root: "n1",
       nodes: {
         n1: {
           id: "n1", kind: "action", capability: "whatsapp.send_message",
@@ -119,7 +119,7 @@ describe("serializePlaybook", () => {
 
   it("engine-tool steps render as before — no record_side_effect callback", () => {
     const wf = {
-      id: "t", name: "Test", version: 1, trigger: { type: "manual" }, root: "n1",
+      id: "t", name: "Test", version: 1, trigger: { type: "manual", connector: "manual" }, root: "n1",
       nodes: { n1: { id: "n1", kind: "action", capability: "ats.get_contract", input: {} } },
     } as const;
     const out = serializePlaybook(wf as any, ["ats.get_contract"]);
@@ -129,7 +129,7 @@ describe("serializePlaybook", () => {
 
   it("renders a condition's then/else", () => {
     const wf = {
-      id: "t", name: "T", version: 1, trigger: { type: "manual" }, root: "c1",
+      id: "t", name: "T", version: 1, trigger: { type: "manual", connector: "manual" }, root: "c1",
       nodes: {
         c1: { id: "c1", kind: "condition", expr: "manager responded?", then: "a1", else: "a2" },
         a1: { id: "a1", kind: "action", capability: "hris.upsert_employee", input: {} },

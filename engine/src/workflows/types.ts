@@ -27,7 +27,10 @@ export type WorkflowNode = ActionNode | ConditionNode;
 
 export interface TriggerDefinition {
   type: string;
-  filter?: string;
+  /** Stable connector id (e.g. "comeet", "shapes") — pairs the trigger event with its source system. */
+  connector: string;
+  /** Deterministic payload used by the editor's Test Flow + by demo runs. */
+  sample?: Record<string, unknown>;
 }
 
 export interface WorkflowDefinition {

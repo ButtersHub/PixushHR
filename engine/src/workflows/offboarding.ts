@@ -28,6 +28,20 @@ export const offboardingWorkflow: WorkflowDefinition = {
     n2: {
       id: "n2",
       kind: "action",
+      capability: "channel.send_message",
+      audience: "employee",
+      input: {
+        tenant: { kind: "literal", value: "papaya" },
+        to: { kind: "agent" },
+        role: { kind: "literal", value: "employee" },
+        channel: { kind: "literal", value: "email" },
+        body: { kind: "agent" },
+      },
+      next: "n3",
+    },
+    n3: {
+      id: "n3",
+      kind: "action",
       capability: "document.generate_termination_letter",
       audience: "employee",
       input: {
@@ -38,10 +52,10 @@ export const offboardingWorkflow: WorkflowDefinition = {
         reason: { kind: "agent" },
         body: { kind: "agent" },
       },
-      next: "n3",
+      next: "n4",
     },
-    n3: {
-      id: "n3",
+    n4: {
+      id: "n4",
       kind: "action",
       capability: "calendar.create_invite",
       audience: "team",
@@ -52,10 +66,10 @@ export const offboardingWorkflow: WorkflowDefinition = {
         attendees: { kind: "agent" },
         location: { kind: "agent" },
       },
-      next: "n4",
+      next: "n5",
     },
-    n4: {
-      id: "n4",
+    n5: {
+      id: "n5",
       kind: "action",
       capability: "workflow.activate_offboarding",
       audience: "hr",

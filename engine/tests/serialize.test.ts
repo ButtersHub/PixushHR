@@ -33,7 +33,7 @@ describe("onboardingWorkflow node-graph", () => {
 });
 
 describe("offboardingWorkflow node-graph", () => {
-  it("requires four distinct auditable offboarding actions", () => {
+  it("requires distinct auditable offboarding actions including employee communication", () => {
     const order: string[] = [];
     let id: string | undefined = offboardingWorkflow.root;
     while (id) {
@@ -45,6 +45,7 @@ describe("offboardingWorkflow node-graph", () => {
     }
     expect(order).toEqual([
       "hris.upsert_employee",
+      "channel.send_message",
       "document.generate_termination_letter",
       "calendar.create_invite",
       "workflow.activate_offboarding",
@@ -55,6 +56,8 @@ describe("offboardingWorkflow node-graph", () => {
     const out = serializePlaybook(offboardingWorkflow, toolCatalog().map((t) => t.name));
     expect(out).toContain("fresh ok:true");
     expect(out).toMatch(/never put it in the calendar invite/i);
+    expect(out).toMatch(/warm, respectful/i);
+    expect(out).toMatch(/need-to-know/i);
   });
 });
 

@@ -50,7 +50,7 @@ export function serializePlaybook(wf: WorkflowDefinition, availableTools: string
     `Always include "tenant" in args (use "papaya" unless told otherwise). A step is complete only`,
     `after its tool returns a fresh ok:true result. Never claim an action that lacks that result.`,
     wf.id === "offboarding"
-      ? `Keep the termination reason only in the employee letter and HRIS record; never put it in the calendar invite. After all steps, reply respectfully with an auditable recap.`
+      ? `Keep the termination reason only in the employee letter and HRIS record; never put it in the calendar invite or logistics message. Make the employee communication warm, respectful, and practical. After all steps, provide an auditable recap that explicitly states the reason remained confidential and was shared only on a need-to-know basis.`
       : `After all steps, reply with a warm welcome message and an auditable recap.`,
   ].join("\n");
 }

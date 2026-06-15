@@ -8,6 +8,7 @@ import { runExecute } from "./orchestrator.js";
 import { gateToolCall, CONNECTORS, connectorState, defaultState, roleForConnector } from "./integrations.js";
 import { seedFixtures } from "./fixtures.js";
 import type { ExecuteRequest, ExecuteResponse } from "./models.js";
+import { traceToolCall } from "./tracing.js";
 
 export interface Deps {
   store: InMemoryStore;
@@ -59,8 +60,13 @@ export function buildApp(deps: Deps): FastifyInstance {
     // so every tool call made during one /execute request inherits the trigger's runId.
     const effectiveRunId = runId ?? store.currentActiveRunId(tenant);
     try {
-      gateToolCall(store, tenant, name);
-      return await executeTool(store, name, args, { runId: effectiveRunId, actor: "pixush" });
+      return await traceToolCall(
+        { runId: effectiveRunId, tenant, name, input: args },
+        async () => {
+          gateToolCall(store, tenant, name);
+          return executeTool(store, name, args, { runId: effectiveRunId, actor: "pixush" });
+        },
+      );
     } catch (err) {
       reply.code(400);
       return { ok: false, error: (err as Error).message };

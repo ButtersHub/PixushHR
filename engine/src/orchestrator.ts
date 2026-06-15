@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { HermesClient } from "./hermes.js";
+import type { ChatResult, HermesClient } from "./hermes.js";
 import type { ExecuteRequest, AgentReply } from "./models.js";
-import { withTrace, startGeneration } from "./tracing.js";
+import {
+  clearToolTraceParent,
+  registerToolTraceParent,
+  startGeneration,
+  withTrace,
+} from "./tracing.js";
 import { onboardingWorkflow } from "./workflows/onboarding.js";
 import { offboardingWorkflow } from "./workflows/offboarding.js";
 import { serializePlaybook } from "./workflows/serialize.js";
@@ -69,12 +74,22 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
       ];
 
       const gen = startGeneration("hermes-chat", { input: messages });
-      const res = await hermes.chat(messages, { runId: requestId });
-      gen?.update({
-        output: res.content,
-        model: res.model,
-        usageDetails: { input: res.usage?.input, output: res.usage?.output },
-      }).end();
+      registerToolTraceParent(requestId, gen);
+      let res: ChatResult;
+      try {
+        res = await hermes.chat(messages, { runId: requestId });
+        gen?.update({
+          output: res.content,
+          model: res.model,
+          usageDetails: { input: res.usage?.input, output: res.usage?.output },
+        });
+      } catch (error) {
+        gen?.update({ level: "ERROR", statusMessage: (error as Error).message });
+        throw error;
+      } finally {
+        clearToolTraceParent(requestId);
+        gen?.end();
+      }
 
       const actions = store.getAudit(tenant)
         .filter((entry) => entry.runId === requestId && entry.actor === "pixush" && entry.status === "success")

@@ -60,6 +60,24 @@ cd engine && npm test          # unit + code-level e2e (stub Hermes)
 cd dashboard && npm run e2e     # Playwright UI e2e (stub engine)
 ```
 
+## Agentalent Sensei Handshake
+Use the handshake runner as a transport loop: it fetches each Agentalent task, sends it to the
+deployed Pixush `/execute` endpoint, submits Pixush's answer, then continues until the handshake is
+complete.
+
+```bash
+node tools/sensei-handshake.mjs \
+  https://agentalent.ai/api/handshake/c83abeac-df50-4532-a930-b7e511a0eff8
+```
+
+Options:
+```bash
+node tools/sensei-handshake.mjs <handshake-url> \
+  --agent-url http://18.215.146.5:3000/execute \
+  --tenant papaya \
+  --max-tasks 5
+```
+
 ## Observability
 The engine traces each `/execute` to **Langfuse** (env-gated). Set `LANGFUSE_PUBLIC_KEY`,
 `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` in `.env`. Follows the official `langfuse` skill

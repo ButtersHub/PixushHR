@@ -80,7 +80,7 @@ describe("serializePlaybook", () => {
     expect(catalog).not.toContain("- channel.send_message");
   });
 
-  it("emits a 'use native gateway + call record_side_effect' block for external-hermes actions", () => {
+  it("emits a 'use native gateway + call record-side-effect' block for external-hermes actions", () => {
     const wf = {
       id: "t", name: "Test", version: 1, trigger: { type: "manual", connector: "manual" }, root: "n1",
       nodes: {
@@ -98,7 +98,7 @@ describe("serializePlaybook", () => {
     const out = serializePlaybook(wf as any, ["gmail.send_email"]);
     expect(out).toMatch(/native/i);
     expect(out).toMatch(/gmail/i);
-    expect(out).toContain("record_side_effect");
+    expect(out).toContain("record-side-effect");
     expect(out).toMatch(/direction: ?["']?outbound/);
   });
 
@@ -113,18 +113,18 @@ describe("serializePlaybook", () => {
       },
     } as const;
     const out = serializePlaybook(wf as any, ["whatsapp.send_message"]);
-    expect(out).toContain("record_side_effect");
+    expect(out).toContain("record-side-effect");
     expect(out).toMatch(/channel: ?["']?whatsapp/);
   });
 
-  it("engine-tool steps render as before — no record_side_effect callback", () => {
+  it("engine-tool steps render as before — no record-side-effect callback", () => {
     const wf = {
       id: "t", name: "Test", version: 1, trigger: { type: "manual", connector: "manual" }, root: "n1",
       nodes: { n1: { id: "n1", kind: "action", capability: "ats.get_contract", input: {} } },
     } as const;
     const out = serializePlaybook(wf as any, ["ats.get_contract"]);
     expect(out).toContain("Call `ats.get_contract`");
-    expect(out).not.toContain("record_side_effect");
+    expect(out).not.toContain("record-side-effect");
   });
 
   it("renders a condition's then/else", () => {

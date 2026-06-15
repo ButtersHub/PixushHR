@@ -26,13 +26,18 @@ export function serializePlaybook(wf: WorkflowDefinition, availableTools: string
       const tool = TOOLS[node.capability];
       if (tool?.kind === "external-hermes") {
         const channel = CONNECTOR_TO_CHANNEL[tool.connector] ?? tool.connector;
-        lines.push(`${indent}${n}. Send via your native ${tool.connector} gateway${audiencePart}.`);
+        const gatewayLabel = tool.connector === "gmail"
+          ? "your built-in Email/Gmail tool (e.g. send_email / hermes-email)"
+          : "your built-in WhatsApp tool (e.g. send_whatsapp_message / hermes-whatsapp)";
+        lines.push(`${indent}${n}. Send a ${tool.connector} message via ${gatewayLabel}${audiencePart}.`);
+        lines.push(`${indent}   DO NOT call this via the hris-tool skill — \`${node.capability}\` is not an engine tool.`);
+        lines.push(`${indent}   Use your own native ${tool.connector} send tool directly.`);
         const argsLine = renderArgs(node);
-        if (argsLine) lines.push(`${indent}   args: ${argsLine}`);
+        if (argsLine) lines.push(`${indent}   args (compose these yourself, do NOT send a name as the recipient): ${argsLine}`);
         const recordFields = channel === "email"
           ? "{ channel: 'email', direction: 'outbound', to, subject, body }"
           : `{ channel: '${channel}', direction: 'outbound', to, body }`;
-        lines.push(`${indent}   Then immediately call \`record_side_effect\` with:`);
+        lines.push(`${indent}   After the send completes, call the \`record-side-effect\` skill (via the hris-tool callback pattern) with:`);
         lines.push(`${indent}     ${recordFields}`);
         lines.push(`${indent}   Do not skip the callback — it is how the audit log gets the entry.`);
       } else {
@@ -53,7 +58,15 @@ export function serializePlaybook(wf: WorkflowDefinition, availableTools: string
 
   walk(wf.root, "");
 
-  const catalog = availableTools.map((t) => `- ${t}`).join("\n");
+  // The AVAILABLE TOOLS catalog only lists engine-tool capabilities (the ones the LLM can
+  // actually invoke via the hris-tool skill). External-hermes capabilities like
+  // gmail.send_email / whatsapp.send_message live in the native gateway and must be called
+  // via the agent's built-in tools — listing them here only confuses the LLM into routing
+  // them through hris-tool, which fails.
+  const catalog = availableTools
+    .filter((t) => TOOLS[t]?.kind !== "external-hermes")
+    .map((t) => `- ${t}`)
+    .join("\n");
 
   return [
     `${wf.name.toUpperCase()} PLAYBOOK`,

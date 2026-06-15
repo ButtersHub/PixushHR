@@ -89,6 +89,27 @@ describe("/execute playbook injection", () => {
     expect(joined).toContain("workflow.activate_offboarding");
     expect(joined).not.toMatch(/ONBOARDING PLAYBOOK/);
   });
+
+  it("uses validation-only LLM instructions for incomplete onboarding data", async () => {
+    const hermes = new FakeHermes("I need the verified signed contract before proceeding.");
+    const store = new InMemoryStore();
+    const app = buildApp({ store, hermes });
+    const res = await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: {
+        task: "Onboard Alex. I do not know the last name, manager, department, or start date.",
+        context: { tenant: "papaya", scenario_id: "missing-info-escalation" },
+      },
+    });
+    const joined = hermes.lastMessages.map((m) => m.content).join("\n");
+    expect(joined).toContain("preflight validation");
+    expect(joined).toContain("Do not call any tools");
+    expect(joined).not.toContain("ONBOARDING PLAYBOOK");
+    expect(joined).not.toContain("candidateId");
+    expect(res.json().structured.actions).toEqual([]);
+    expect(store.getAudit("papaya").filter((entry) => entry.actor === "pixush")).toHaveLength(0);
+  });
 });
 
 describe("runExecute (no-op tracing path)", () => {

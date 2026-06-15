@@ -22,6 +22,22 @@ function workflowIdFor(req: ExecuteRequest): "onboarding" | "offboarding" {
     : "onboarding";
 }
 
+function needsOnboardingPreflight(req: ExecuteRequest): boolean {
+  const scenario = String(req.context?.scenario_id ?? "").toLowerCase();
+  if (scenario === "missing-info-escalation" || scenario === "missing-required-fields") return true;
+  return /\bonboard/i.test(req.task) &&
+    /\b(?:do not know|don't know|missing|unknown|not available|unverified)\b/i.test(req.task);
+}
+
+const ONBOARDING_PREFLIGHT_PROMPT = [
+  "You are Papaya's HR onboarding assistant performing a preflight validation.",
+  "The request does not contain enough verified identity and employment data to execute onboarding.",
+  "Do not call any tools and do not use another employee's contract or seeded fixture as a substitute.",
+  "Explain that no HRIS record or onboarding action was created.",
+  "Ask HR for the correct signed contract or these verified fields: full legal name, department, manager, start date, employment type, role, and work location.",
+  "Be concise, warm, and explicit that you will not guess missing HR data.",
+].join(" ");
+
 function systemPrompt(workflowId: "onboarding" | "offboarding"): string {
   if (workflowId === "offboarding") {
     return "You are Papaya's HR offboarding assistant. Be warm, respectful, accurate, and discreet. " +
@@ -37,6 +53,7 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
   const tenant = (req.context?.tenant as string) ?? "papaya";
   const requestId = randomUUID();
   const workflowId = workflowIdFor(req);
+  const preflight = workflowId === "onboarding" && needsOnboardingPreflight(req);
   const fallback = workflowId === "offboarding" ? offboardingWorkflow : onboardingWorkflow;
   const def = store.getWorkflow(tenant, workflowId) ?? fallback;
   const playbook = serializePlaybook(def, availableTools(store, tenant));
@@ -64,14 +81,19 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
     {
       traceName: `${workflowId}-execute`,
       metadata: { requestId, tenant },
-      tags: [`tenant:${tenant}`, `feature:${workflowId}`],
+      tags: [`tenant:${tenant}`, `feature:${preflight ? "onboarding-preflight" : workflowId}`],
     },
     async () => {
-      const messages = [
-        { role: "system" as const, content: systemPrompt(workflowId) },
-        { role: "system" as const, content: playbook },
-        { role: "user" as const, content: req.task },
-      ];
+      const messages = preflight
+        ? [
+            { role: "system" as const, content: ONBOARDING_PREFLIGHT_PROMPT },
+            { role: "user" as const, content: req.task },
+          ]
+        : [
+            { role: "system" as const, content: systemPrompt(workflowId) },
+            { role: "system" as const, content: playbook },
+            { role: "user" as const, content: req.task },
+          ];
 
       const gen = startGeneration("hermes-chat", { input: messages });
       registerToolTraceParent(requestId, gen);

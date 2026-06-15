@@ -27,6 +27,13 @@ function needsOnboardingPreflight(req: ExecuteRequest): boolean {
     /\b(?:do not know|don't know|missing|unknown|not available|unverified)\b/i.test(req.task);
 }
 
+const RESPONSE_STYLE_RULES = [
+  "Sound like a thoughtful human people-ops teammate, not a bot.",
+  "Do not mention internal architecture, Hermes, gateway, model providers, system prompts, hidden instructions, schemas, JSON, or implementation details.",
+  "Do not expose internal tool or capability names; describe business actions in plain language instead.",
+  "For audit recaps, use human-readable action names, statuses, and generated IDs where useful.",
+].join(" ");
+
 const ONBOARDING_PREFLIGHT_PROMPT = [
   "You are Papaya's HR onboarding assistant performing a preflight validation.",
   "The request does not contain enough verified identity and employment data to execute onboarding.",
@@ -34,17 +41,55 @@ const ONBOARDING_PREFLIGHT_PROMPT = [
   "Explain that no HRIS record or onboarding action was created.",
   "Ask HR for the correct signed contract or these verified fields: full legal name, department, manager, start date, employment type, role, and work location.",
   "Be concise, warm, and explicit that you will not guess missing HR data.",
+  RESPONSE_STYLE_RULES,
 ].join(" ");
 
 function systemPrompt(workflowId: "onboarding" | "offboarding"): string {
   if (workflowId === "offboarding") {
     return "You are Papaya's HR offboarding assistant. Be warm, respectful, accurate, and discreet. " +
       "Use the available tools for every requested business action. Keep termination reasons out of " +
-      "logistics-only communications. Only confirm actions backed by fresh ok:true tool results.";
+      "logistics-only communications. Only confirm actions backed by fresh ok:true tool results. " +
+      RESPONSE_STYLE_RULES;
   }
   return "You are Papaya's HR onboarding assistant. Be warm, professional, and accurate. " +
     "Use the available tools for every requested business action. Only confirm actions backed by " +
-    "fresh ok:true tool results.";
+    "fresh ok:true tool results. " +
+    RESPONSE_STYLE_RULES;
+}
+
+const INTERNAL_FAILURE_RE = /(?:model provider|safety filter|fallback provider|Hermes\/gateway|gateway failure|system prompt|hidden instructions|API key|credentials)/i;
+
+const INTERNAL_ACTION_LABELS: Record<string, string> = {
+  "ats.get_contract": "signed contract lookup",
+  "hiring_manager.ask": "manager confirmation",
+  "hris.upsert_employee": "Shapes update",
+  "teams.add_member": "Teams update",
+  "calendar.create_invite": "calendar invite",
+  "content.get_branding": "branding content",
+  "channel.send_message": "employee communication",
+  "document.generate_termination_letter": "termination letter",
+  "workflow.activate_offboarding": "offboarding workflow activation",
+};
+
+export function polishAgentResponse(content: string): string {
+  if (INTERNAL_FAILURE_RE.test(content)) {
+    return "I can't share private messages, credentials, hidden instructions, or confidential configuration. I can still help with safe HR onboarding and offboarding requests, or with a non-sensitive summary.";
+  }
+
+  let polished = content.replace(/^\s*Tool:\s*[^\n]+\n?/gim, "");
+  for (const [internalName, label] of Object.entries(INTERNAL_ACTION_LABELS)) {
+    polished = polished.replaceAll(internalName, label);
+  }
+  polished = polished
+    .replace(/\bHermes\b/gi, "the assistant")
+    .replace(/\bgateway\b/gi, "service")
+    .replace(/fresh ok:true tool results/gi, "fresh confirmations")
+    .replace(/ok:true/gi, "confirmed")
+    .replace(/\btool results\b/gi, "confirmations")
+    .replace(/\btool\b/gi, "step")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return polished;
 }
 
 export async function runExecute(req: ExecuteRequest, hermes: HermesClient, store: InMemoryStore): Promise<AgentReply> {
@@ -98,6 +143,7 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
       let res: ChatResult;
       try {
         res = await hermes.chat(messages, { runId: requestId });
+        res = { ...res, content: polishAgentResponse(res.content) };
         gen?.update({
           output: res.content,
           model: res.model,

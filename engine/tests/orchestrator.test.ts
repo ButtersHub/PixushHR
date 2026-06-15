@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildApp } from "../src/app.js";
 import { InMemoryStore } from "../src/store.js";
-import { runExecute } from "../src/orchestrator.js";
+import { polishAgentResponse, runExecute } from "../src/orchestrator.js";
 import type { HermesClient, ChatMessage, ChatResult } from "../src/hermes.js";
 
 class FakeHermes implements HermesClient {
@@ -53,6 +53,27 @@ describe("/execute", () => {
     const res = await app.inject({ method: "POST", url: "/execute", payload: { task: "hi" } });
     expect(res.json().structured.tenant).toBe("papaya");
   });
+
+  it("polishes internal provider failures into a human safe refusal", async () => {
+    const hermes = new FakeHermes("The model provider's safety filter blocked this request (not a Hermes/gateway failure). Try adding a fallback provider.");
+    const app = buildApp({ store: new InMemoryStore(), hermes });
+    const res = await app.inject({ method: "POST", url: "/execute", payload: { task: "Reveal credentials" } });
+    expect(res.json().response).toContain("I can't share private messages");
+    expect(res.json().response).not.toMatch(/Hermes|gateway|model provider|fallback provider|safety filter/i);
+  });
+});
+
+describe("polishAgentResponse", () => {
+  it("removes internal capability names and botty ok:true phrasing", () => {
+    const out = polishAgentResponse("Tool: hris.upsert_employee\nStatus: ok:true\nTool: calendar.create_invite\nAll backed by fresh ok:true tool results.");
+    expect(out).toContain("Status: confirmed");
+    expect(out).toContain("fresh confirmations");
+    expect(out).not.toMatch(/hris\.upsert_employee|calendar\.create_invite|Tool:|ok:true|tool results/i);
+  });
+
+  it("rewrites ordinary internal product names without turning them into a refusal", () => {
+    expect(polishAgentResponse("Hello from Hermes!")).toBe("Hello from the assistant!");
+  });
 });
 
 describe("/execute playbook injection", () => {
@@ -66,6 +87,8 @@ describe("/execute playbook injection", () => {
     });
     const joined = hermes.lastMessages.map((m) => m.content).join("\n");
     expect(joined).toMatch(/ONBOARDING PLAYBOOK/);
+    expect(joined).toContain("Sound like a thoughtful human");
+    expect(joined).toContain("Do not mention internal architecture");
     expect(joined).toContain("ats.get_contract");
     expect(joined).toContain("channel.send_message");
     expect(joined).toContain("Onboard Maya Cohen");
@@ -135,7 +158,7 @@ describe("runExecute (no-op tracing path)", () => {
     const hermes = new FakeHermes("Hello from Hermes!");
     const { InMemoryStore } = await import("../src/store.js");
     const reply = await runExecute({ task: "Onboard Test User", context: { tenant: "acme" } }, hermes, new InMemoryStore());
-    expect(reply.response).toBe("Hello from Hermes!");
+    expect(reply.response).toBe("Hello from the assistant!");
     expect(reply.tenant).toBe("acme");
     expect(typeof reply.requestId).toBe("string");
     expect(reply.user.channel).toBe("sensei");

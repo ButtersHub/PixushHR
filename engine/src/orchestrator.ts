@@ -123,18 +123,43 @@ export function polishAgentResponse(content: string, task = ""): string {
   return polished;
 }
 
-export async function runExecute(req: ExecuteRequest, hermes: HermesClient, store: InMemoryStore): Promise<AgentReply> {
-  const tenant = (req.context?.tenant as string) ?? "papaya";
-  const requestId = randomUUID();
-  const workflowId = workflowIdFor(req);
-  const preflight = workflowId === "onboarding" && needsOnboardingPreflight(req);
-  const usePlaybook = !preflight && needsWorkflowPlaybook(req, workflowId);
-  const fallback = workflowId === "offboarding" ? offboardingWorkflow : onboardingWorkflow;
-  const def = store.getWorkflow(tenant, workflowId) ?? fallback;
-  const playbook = serializePlaybook(def, availableTools(store, tenant));
+export interface RunWorkflowOpts {
+  tenant: string;
+  task: string;
+  /** Explicit workflow id. Defaults to onboarding fallback when unset. */
+  workflowId?: string;
+  /** Used for the "run.started" audit + Sensei vs trigger UI. */
+  source?: string;
+  /** Pre-allocated runId (so the caller can record it in the Run store before kickoff). */
+  runId?: string;
+  /** Optional context for systemPrompt scenario routing (read by ExecuteRequest-shaped callers). */
+  scenarioId?: string;
+}
 
-  // Emit a "run.started" trigger audit so the Audit log shows what initiated the agent run.
-  const source = (req.context?.source as string) ?? "sensei";
+/** Single source of truth for "run a workflow once via Hermes and return the agent reply".
+ * Used by /execute (via runExecute below), /workflows/:id/test, and /simulate/inbound. */
+export async function runWorkflow(
+  opts: RunWorkflowOpts,
+  hermes: HermesClient,
+  store: InMemoryStore,
+): Promise<AgentReply> {
+  const tenant = opts.tenant;
+  const requestId = opts.runId ?? randomUUID();
+  const workflowId = opts.workflowId
+    ?? workflowIdFor({ task: opts.task, context: { scenario_id: opts.scenarioId } } as ExecuteRequest);
+  const seededFallback =
+    workflowId === "onboarding" ? onboardingWorkflow :
+    workflowId === "offboarding" ? offboardingWorkflow :
+    undefined;
+  const def = store.getWorkflow(tenant, workflowId) ?? seededFallback;
+  const tools = availableTools(store, tenant);
+  const playbook = def
+    ? serializePlaybook(def, tools)
+    : `FREE-FORM REQUEST (no playbook)\n\nAVAILABLE TOOLS\n${tools.map((t) => `- ${t}`).join("\n")}\n\n` +
+      `Always include "tenant" in args (use "papaya" unless told otherwise). A step is complete only ` +
+      `after its tool returns a fresh ok:true result. Never claim an action that lacks that result.`;
+
+  const source = opts.source ?? "sensei";
   store.audit({
     tenant,
     actor: "trigger",
@@ -142,31 +167,109 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
     capability: "run.started",
     label: "Run started",
     integration: source === "sensei" ? "Sensei" : "Trigger",
-    target: req.task.slice(0, 80),
-    summary: `Started by ${source}: ${req.task.slice(0, 60)}${req.task.length > 60 ? "…" : ""}`,
+    target: opts.task.slice(0, 80),
+    summary: `Started by ${source}: ${opts.task.slice(0, 60)}${opts.task.length > 60 ? "…" : ""}`,
     runId: requestId,
-    inputs: { task: req.task, context: req.context ?? {} },
+    inputs: { task: opts.task, workflowId },
   });
 
-  // Track this run as in-flight so the real Hermes's tool callbacks (which don't forward runId)
-  // can be associated with the right flow. See InMemoryStore.currentActiveRunId.
   store.pushActiveRun(tenant, requestId);
   try {
     return await withTrace(
+      {
+        traceName: `${workflowId}-execute`,
+        metadata: { requestId, tenant, workflowId },
+        tags: [`tenant:${tenant}`, `feature:${workflowId}`],
+      },
+      async () => {
+        const wfIdForPrompt = workflowId === "onboarding" || workflowId === "offboarding"
+          ? workflowId
+          : "onboarding";
+        const messages = [
+          { role: "system" as const, content: systemPrompt(wfIdForPrompt) },
+          { role: "system" as const, content: playbook },
+          { role: "user" as const, content: opts.task },
+        ];
+
+        const gen = startGeneration("hermes-chat", { input: messages });
+        registerToolTraceParent(requestId, gen);
+        let res: ChatResult;
+        try {
+          res = await hermes.chat(messages, { runId: requestId });
+          res = { ...res, content: polishAgentResponse(res.content, opts.task) };
+          gen?.update({
+            output: res.content,
+            model: res.model,
+            usageDetails: { input: res.usage?.input, output: res.usage?.output },
+          });
+        } catch (error) {
+          gen?.update({ level: "ERROR", statusMessage: (error as Error).message });
+          throw error;
+        } finally {
+          clearToolTraceParent(requestId);
+          gen?.end();
+        }
+
+        const actions = store
+          .getAudit(tenant)
+          .filter((entry) => entry.runId === requestId && entry.actor === "pixush" && entry.status === "success")
+          .map(({ capability, target, summary }) => ({ capability, target, summary }));
+
+        return {
+          requestId,
+          tenant,
+          user: { id: "unknown", name: "Employee", role: "employee", channel: "sensei" as const },
+          response: res.content,
+          actions,
+        };
+      },
+    );
+  } finally {
+    store.popActiveRun(tenant, requestId);
+  }
+}
+
+/** Sensei-facing entry point — handles three branches:
+ *  - onboarding preflight (incomplete data) → short prompt, no tools.
+ *  - workflow intent (onboarding/offboarding keywords) → delegate to runWorkflow.
+ *  - general assistant (ambiguous prompts) → soft persona, no playbook, no tools. */
+export async function runExecute(
+  req: ExecuteRequest,
+  hermes: HermesClient,
+  store: InMemoryStore,
+): Promise<AgentReply> {
+  const tenant = (req.context?.tenant as string) ?? "papaya";
+  const workflowId = workflowIdFor(req);
+  const preflight = workflowId === "onboarding" && needsOnboardingPreflight(req);
+  const usePlaybook = !preflight && needsWorkflowPlaybook(req, workflowId);
+
+  if (usePlaybook) {
+    return runWorkflow(
+      {
+        tenant,
+        task: req.task,
+        workflowId,
+        source: (req.context?.source as string) ?? "sensei",
+      },
+      hermes,
+      store,
+    );
+  }
+
+  // Either preflight short-circuit or general-assistant fallback. Both bypass the playbook +
+  // skip the run.started audit (no real workflow run).
+  const requestId = randomUUID();
+  const feature = preflight ? "onboarding-preflight" : "general";
+  return withTrace(
     {
-      traceName: `${workflowId}-execute`,
+      traceName: `onboarding-execute`,
       metadata: { requestId, tenant },
-      tags: [`tenant:${tenant}`, `feature:${preflight ? "onboarding-preflight" : usePlaybook ? workflowId : "general"}`],
+      tags: [`tenant:${tenant}`, `feature:${feature}`],
     },
     async () => {
       const messages = preflight
         ? [
             { role: "system" as const, content: ONBOARDING_PREFLIGHT_PROMPT },
-            { role: "user" as const, content: req.task },
-          ]
-        : usePlaybook ? [
-            { role: "system" as const, content: systemPrompt(workflowId) },
-            { role: "system" as const, content: playbook },
             { role: "user" as const, content: req.task },
           ]
         : [
@@ -192,21 +295,13 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
         clearToolTraceParent(requestId);
         gen?.end();
       }
-
-      const actions = store.getAudit(tenant)
-        .filter((entry) => entry.runId === requestId && entry.actor === "pixush" && entry.status === "success")
-        .map(({ capability, target, summary }) => ({ capability, target, summary }));
-
       return {
         requestId,
         tenant,
         user: { id: "unknown", name: "Employee", role: "employee", channel: "sensei" as const },
         response: res.content,
-        actions,
+        actions: [],
       };
     },
   );
-  } finally {
-    store.popActiveRun(tenant, requestId);
-  }
 }

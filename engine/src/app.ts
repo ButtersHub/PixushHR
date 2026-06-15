@@ -4,7 +4,8 @@ import { z } from "zod";
 import type { InMemoryStore } from "./store.js";
 import type { HermesClient } from "./hermes.js";
 import { executeTool, TOOLS, capabilitySpecs } from "./tools.js";
-import { runExecute } from "./orchestrator.js";
+import { runExecute, runWorkflow } from "./orchestrator.js";
+import { randomUUID } from "node:crypto";
 import { gateToolCall, CONNECTORS, connectorState, defaultState, roleForConnector, enabledTriggers } from "./integrations.js";
 import { seedFixtures } from "./fixtures.js";
 import type { ExecuteRequest, ExecuteResponse } from "./models.js";
@@ -77,9 +78,10 @@ export function buildApp(deps: Deps): FastifyInstance {
     }
   });
 
-  app.get<{ Querystring: { tenant?: string } }>("/audit", async (req) => {
+  app.get<{ Querystring: { tenant?: string; runId?: string } }>("/audit", async (req) => {
     const tenant = req.query.tenant ?? "papaya";
-    return store.getAudit(tenant);
+    const all = store.getAudit(tenant);
+    return req.query.runId ? all.filter((e) => e.runId === req.query.runId) : all;
   });
 
   app.get<{ Querystring: { tenant?: string } }>("/triggers", async (req) => {
@@ -286,6 +288,37 @@ export function buildApp(deps: Deps): FastifyInstance {
     if (!parsed.success) { reply.code(400); return { ok: false, error: "invalid workflow definition" }; }
     store.setWorkflow(req.query.tenant ?? "papaya", parsed.data as import("./workflows/types.js").WorkflowDefinition);
     return { ok: true };
+  });
+
+  // ── Async test runs (Test Flow drawer) ────────────────────────────────
+  app.post<{ Params: { id: string }; Querystring: { tenant?: string } }>("/workflows/:id/test", async (req, reply) => {
+    const tenant = req.query.tenant ?? "papaya";
+    const wf = store.getWorkflow(tenant, req.params.id);
+    if (!wf) { reply.code(404); return { ok: false, error: "unknown workflow" }; }
+    const runId = randomUUID();
+    store.addRun({ tenant, runId, workflowId: req.params.id, status: "running" });
+
+    const sample = wf.trigger.sample ?? {};
+    const task = `Run the ${wf.name} workflow for the trigger payload below. ` +
+      `Trigger: ${wf.trigger.type} via ${wf.trigger.connector}. Payload: ${JSON.stringify(sample)}.`;
+
+    // Fire and forget — update Run state when finished. The Test Flow drawer polls
+    // /runs/:id and /audit?runId= until status is done|error.
+    void runWorkflow(
+      { tenant, task, workflowId: req.params.id, source: "test-flow", runId },
+      deps.hermes,
+      store,
+    )
+      .then((r) => store.updateRun(runId, { status: "done", response: r.response }))
+      .catch((e) => store.updateRun(runId, { status: "error", error: (e as Error).message }));
+
+    return { runId };
+  });
+
+  app.get<{ Params: { id: string } }>("/runs/:id", async (req, reply) => {
+    const run = store.getRun(req.params.id);
+    if (!run) { reply.code(404); return { ok: false, error: "unknown run" }; }
+    return run;
   });
 
   app.get("/capabilities", async () => capabilitySpecs());

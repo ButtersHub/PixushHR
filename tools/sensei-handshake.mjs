@@ -13,7 +13,7 @@ Options:
   --tenant <tenant>     Tenant passed to Pixush. Default: ${DEFAULT_TENANT}
   --source <source>     Source passed to Pixush. Default: agentalent-handshake
   --max-tasks <n>       Safety cap. Default: ${DEFAULT_MAX_TASKS}
-  --timeout-ms <n>      Per-request timeout. Default: 120000
+  --timeout-ms <n>      Per-request timeout. Default: 300000
   --resume-submit-url <url>
                        Resume by submitting a known answer or next task to this submit URL
   --resume-response <text>
@@ -35,7 +35,7 @@ function parseArgs(argv) {
     tenant: DEFAULT_TENANT,
     source: "agentalent-handshake",
     maxTasks: DEFAULT_MAX_TASKS,
-    timeoutMs: 120_000,
+    timeoutMs: 300_000,
     resumeSubmitUrl: "",
     resumeResponse: "",
     resumeTask: "",
@@ -92,7 +92,7 @@ function requireValue(argv, index, option) {
   return value;
 }
 
-async function fetchJson(url, init = {}, timeoutMs = 120_000) {
+async function fetchJson(url, init = {}, timeoutMs = 300_000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -244,8 +244,17 @@ async function main() {
 
     console.log(`\n=== Task ${index}${taskId ? ` (${taskId})` : ""} ===`);
     console.log(task);
+    console.log(`\nSubmit URL: ${resolveUrl(submitUrl, opts.handshakeUrl)}`);
 
-    const answer = await askPixush(opts, task, taskId);
+    let answer;
+    try {
+      answer = await askPixush(opts, task, taskId);
+    } catch (error) {
+      console.error(`\nPixush failed before submission: ${error.message}`);
+      console.error("Resume this task with:");
+      console.error(`  --resume-submit-url ${JSON.stringify(submitUrl)} --resume-task ${JSON.stringify(task)}`);
+      throw error;
+    }
     console.log("\n--- Pixush answer ---");
     console.log(answer);
 

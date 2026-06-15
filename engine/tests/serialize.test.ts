@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { onboardingWorkflow } from "../src/workflows/onboarding.js";
+import { offboardingWorkflow } from "../src/workflows/offboarding.js";
 import { serializePlaybook } from "../src/workflows/serialize.js";
 import { toolCatalog } from "../src/tools.js";
 
@@ -28,6 +29,32 @@ describe("onboardingWorkflow node-graph", () => {
       "content.get_branding",
       "channel.send_message",
     ]);
+  });
+});
+
+describe("offboardingWorkflow node-graph", () => {
+  it("requires four distinct auditable offboarding actions", () => {
+    const order: string[] = [];
+    let id: string | undefined = offboardingWorkflow.root;
+    while (id) {
+      const node: import("../src/workflows/types.js").WorkflowNode = offboardingWorkflow.nodes[id];
+      expect(node).toBeTruthy();
+      if (node.kind !== "action") break;
+      order.push(node.capability);
+      id = node.next;
+    }
+    expect(order).toEqual([
+      "hris.upsert_employee",
+      "document.generate_termination_letter",
+      "calendar.create_invite",
+      "workflow.activate_offboarding",
+    ]);
+  });
+
+  it("instructs the agent to keep the reason out of logistics", () => {
+    const out = serializePlaybook(offboardingWorkflow, toolCatalog().map((t) => t.name));
+    expect(out).toContain("fresh ok:true");
+    expect(out).toMatch(/never put it in the calendar invite/i);
   });
 });
 

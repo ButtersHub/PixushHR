@@ -10,6 +10,31 @@ export interface Employee {
   department?: string;
   managerId?: string;
   employmentType?: string;
+  employmentStatus?: string;
+  terminationDate?: string;
+  lastWorkingDay?: string;
+  terminationReason?: string;
+}
+
+export interface GeneratedDocument {
+  id: string;
+  tenant: string;
+  type: "termination_letter";
+  employeeId: string;
+  employeeName: string;
+  effectiveDate: string;
+  reason: string;
+  body: string;
+}
+
+export interface WorkflowRun {
+  id: string;
+  tenant: string;
+  workflow: "offboarding";
+  employeeId: string;
+  effectiveDate: string;
+  stakeholders: string[];
+  status: "active";
 }
 
 export interface Contract {
@@ -107,6 +132,8 @@ export class InMemoryStore {
   private messages: Message[] = [];
   private invites: CalendarInvite[] = [];
   private memberships: TeamMembership[] = [];
+  private documents: GeneratedDocument[] = [];
+  private workflowRuns: WorkflowRun[] = [];
   private auditLog: AuditEntry[] = [];
   private connectorStates = new Map<string, ConnectorState>();
   private workflows = new Map<string, WorkflowDefinition>();
@@ -196,6 +223,26 @@ export class InMemoryStore {
     return this.memberships.filter((m) => m.tenant === tenant);
   }
 
+  addDocument(document: Omit<GeneratedDocument, "id">): GeneratedDocument {
+    const full: GeneratedDocument = { ...document, id: randomUUID() };
+    this.documents.push(full);
+    return full;
+  }
+
+  getDocuments(tenant: string): GeneratedDocument[] {
+    return this.documents.filter((d) => d.tenant === tenant);
+  }
+
+  activateWorkflow(run: Omit<WorkflowRun, "id" | "status">): WorkflowRun {
+    const full: WorkflowRun = { ...run, id: randomUUID(), status: "active" };
+    this.workflowRuns.push(full);
+    return full;
+  }
+
+  getWorkflowRuns(tenant: string): WorkflowRun[] {
+    return this.workflowRuns.filter((r) => r.tenant === tenant);
+  }
+
   audit(entry: Omit<AuditEntry, "id" | "ts">): AuditEntry {
     const full: AuditEntry = { ...entry, id: randomUUID(), ts: new Date().toISOString() };
     this.auditLog.push(full);
@@ -266,6 +313,8 @@ export class InMemoryStore {
     this.messages = [];
     this.invites = [];
     this.memberships = [];
+    this.documents = [];
+    this.workflowRuns = [];
     this.auditLog = [];
     this.connectorStates.clear();
     this.workflows.clear();

@@ -3,19 +3,37 @@ import type { HermesClient } from "./hermes.js";
 import type { ExecuteRequest, AgentReply } from "./models.js";
 import { withTrace, startGeneration } from "./tracing.js";
 import { onboardingWorkflow } from "./workflows/onboarding.js";
+import { offboardingWorkflow } from "./workflows/offboarding.js";
 import { serializePlaybook } from "./workflows/serialize.js";
 import { availableTools } from "./integrations.js";
 import type { InMemoryStore } from "./store.js";
 
-const SYSTEM_PROMPT =
-  "You are Papaya's HR onboarding assistant. Be warm, professional, and accurate. " +
-  "When you create or update employee records, use the available tools. " +
-  "After acting, reply with a warm message plus a one-line summary of what you did.";
+function workflowIdFor(req: ExecuteRequest): "onboarding" | "offboarding" {
+  const scenario = String(req.context?.scenario_id ?? "").toLowerCase();
+  if (scenario === "offboarding" || scenario === "offboard") return "offboarding";
+  if (scenario === "onboarding" || scenario === "onboard") return "onboarding";
+  return /\b(offboard|offboarding|termination|last working day)\b/i.test(req.task)
+    ? "offboarding"
+    : "onboarding";
+}
+
+function systemPrompt(workflowId: "onboarding" | "offboarding"): string {
+  if (workflowId === "offboarding") {
+    return "You are Papaya's HR offboarding assistant. Be warm, respectful, accurate, and discreet. " +
+      "Use the available tools for every requested business action. Keep termination reasons out of " +
+      "logistics-only communications. Only confirm actions backed by fresh ok:true tool results.";
+  }
+  return "You are Papaya's HR onboarding assistant. Be warm, professional, and accurate. " +
+    "Use the available tools for every requested business action. Only confirm actions backed by " +
+    "fresh ok:true tool results.";
+}
 
 export async function runExecute(req: ExecuteRequest, hermes: HermesClient, store: InMemoryStore): Promise<AgentReply> {
   const tenant = (req.context?.tenant as string) ?? "papaya";
   const requestId = randomUUID();
-  const def = store.getWorkflow(tenant, "onboarding") ?? onboardingWorkflow;
+  const workflowId = workflowIdFor(req);
+  const fallback = workflowId === "offboarding" ? offboardingWorkflow : onboardingWorkflow;
+  const def = store.getWorkflow(tenant, workflowId) ?? fallback;
   const playbook = serializePlaybook(def, availableTools(store, tenant));
 
   // Emit a "run.started" trigger audit so the Audit log shows what initiated the agent run.
@@ -39,15 +57,13 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
   try {
     return await withTrace(
     {
-      traceName: "onboarding-execute",
+      traceName: `${workflowId}-execute`,
       metadata: { requestId, tenant },
-      tags: [`tenant:${tenant}`, "feature:onboarding"],
+      tags: [`tenant:${tenant}`, `feature:${workflowId}`],
     },
     async () => {
-      // system persona + injected onboarding playbook/tool-catalog + the user task.
-      // Intent detection is minimal for now: onboarding is the demo path (decision #30).
       const messages = [
-        { role: "system" as const, content: SYSTEM_PROMPT },
+        { role: "system" as const, content: systemPrompt(workflowId) },
         { role: "system" as const, content: playbook },
         { role: "user" as const, content: req.task },
       ];
@@ -60,12 +76,16 @@ export async function runExecute(req: ExecuteRequest, hermes: HermesClient, stor
         usageDetails: { input: res.usage?.input, output: res.usage?.output },
       }).end();
 
+      const actions = store.getAudit(tenant)
+        .filter((entry) => entry.runId === requestId && entry.actor === "pixush" && entry.status === "success")
+        .map(({ capability, target, summary }) => ({ capability, target, summary }));
+
       return {
         requestId,
         tenant,
         user: { id: "unknown", name: "Employee", role: "employee", channel: "sensei" as const },
         response: res.content,
-        actions: [], // populated when we parse Hermes tool-call results (later phase)
+        actions,
       };
     },
   );

@@ -43,6 +43,10 @@ const upsertSchema = z.object({
   department: z.string().optional(),
   managerId: z.string().optional(),
   employmentType: z.string().optional(),
+  employmentStatus: z.string().optional(),
+  terminationDate: z.string().optional(),
+  lastWorkingDay: z.string().optional(),
+  terminationReason: z.string().optional(),
 });
 
 const getContractSchema = z.object({ tenant: z.string(), candidateId: z.string() });
@@ -57,7 +61,7 @@ const inviteSchema = z.object({
   date: z.string(),
   attendees: z.array(z.string()).min(1),
   location: z.string(),
-});
+}).strict();
 const brandingSchema = z.object({ tenant: z.string() });
 const sendSchema = z.object({
   tenant: z.string(),
@@ -65,6 +69,20 @@ const sendSchema = z.object({
   role: z.string(),
   channel: z.enum(["email", "teams", "slack"]),
   body: z.string(),
+});
+const terminationLetterSchema = z.object({
+  tenant: z.string(),
+  employeeId: z.string(),
+  employeeName: z.string(),
+  effectiveDate: z.string(),
+  reason: z.string(),
+  body: z.string(),
+});
+const activateOffboardingSchema = z.object({
+  tenant: z.string(),
+  employeeId: z.string(),
+  effectiveDate: z.string(),
+  stakeholders: z.array(z.string()).min(1),
 });
 
 export const TOOLS: Record<string, ToolDef> = {
@@ -168,6 +186,42 @@ export const TOOLS: Record<string, ToolDef> = {
         summary: `Scheduled "${args.title}" on ${args.date}`,
       };
     },
+  },
+
+  "document.generate_termination_letter": {
+    name: "document.generate_termination_letter",
+    integration: "Content",
+    label: "Generate termination letter",
+    purpose: "Generate and retain an employee-facing termination letter with the authorized reason.",
+    schema: terminationLetterSchema,
+    sideEffectful: true,
+    run: async (store, args) => {
+      const { tenant, ...letter } = parseArgs(terminationLetterSchema, args);
+      const document = store.addDocument({ tenant, type: "termination_letter", ...letter });
+      return { ok: true, document };
+    },
+    summarize: (args, result) => ({
+      target: String((result.document as { id?: string } | undefined)?.id ?? args.employeeId ?? "—"),
+      summary: `Generated termination letter for ${args.employeeName}`,
+    }),
+  },
+
+  "workflow.activate_offboarding": {
+    name: "workflow.activate_offboarding",
+    integration: "HRIS",
+    label: "Activate offboarding workflow",
+    purpose: "Activate the offboarding workflow for an employee and the approved logistics stakeholders.",
+    schema: activateOffboardingSchema,
+    sideEffectful: true,
+    run: async (store, args) => {
+      const { tenant, ...workflow } = parseArgs(activateOffboardingSchema, args);
+      const run = store.activateWorkflow({ tenant, workflow: "offboarding", ...workflow });
+      return { ok: true, workflow: run };
+    },
+    summarize: (args, result) => ({
+      target: String((result.workflow as { id?: string } | undefined)?.id ?? args.employeeId ?? "—"),
+      summary: `Activated offboarding workflow for ${args.employeeId}`,
+    }),
   },
 
   "content.get_branding": {

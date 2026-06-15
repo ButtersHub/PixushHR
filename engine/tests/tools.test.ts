@@ -95,6 +95,43 @@ describe("mock integration tools", () => {
     expect(store.getInvites("papaya")[0]).not.toHaveProperty("reason");
   });
 
+  it("calendar.create_invite rejects a termination reason", async () => {
+    const { store, executeTool } = await seeded();
+    await expect(executeTool(store, "calendar.create_invite", {
+      tenant: "papaya",
+      title: "Daniel last-day logistics",
+      date: "2026-06-28",
+      attendees: ["Rina Bar", "HRBP", "IT"],
+      location: "Virtual",
+      reason: "role eliminated",
+    })).rejects.toThrow(/required fields/i);
+    expect(store.getInvites("papaya")).toHaveLength(0);
+  });
+
+  it("executes and audits distinct offboarding document and workflow actions", async () => {
+    const { store, executeTool } = await seeded();
+    await executeTool(store, "document.generate_termination_letter", {
+      tenant: "papaya",
+      employeeId: "daniel-rosen",
+      employeeName: "Daniel Rosen",
+      effectiveDate: "2026-06-28",
+      reason: "role eliminated after team restructure",
+      body: "Dear Daniel, your employment will end on June 28, 2026.",
+    });
+    await executeTool(store, "workflow.activate_offboarding", {
+      tenant: "papaya",
+      employeeId: "daniel-rosen",
+      effectiveDate: "2026-06-28",
+      stakeholders: ["Rina Bar", "HRBP", "IT"],
+    });
+    expect(store.getDocuments("papaya")).toHaveLength(1);
+    expect(store.getWorkflowRuns("papaya")[0].status).toBe("active");
+    expect(store.getAudit("papaya").map((e) => e.capability)).toEqual([
+      "document.generate_termination_letter",
+      "workflow.activate_offboarding",
+    ]);
+  });
+
   it("content.get_branding returns the branding pack", async () => {
     const { store, executeTool } = await seeded();
     const res = await executeTool(store, "content.get_branding", { tenant: "papaya" });

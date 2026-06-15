@@ -92,6 +92,22 @@ docker compose exec agent hermes config set model.default gpt-5.5
 docker compose restart agent
 ```
 
+The HTTP API is a non-interactive agent surface. Restrict it to the skill and terminal toolsets
+needed by PixushHR, and cap the agent loop so a failed tool choice cannot consume the evaluator's
+entire 120-second budget:
+```bash
+docker compose exec agent hermes config set platform_toolsets.api_server '["skills","terminal"]'
+docker compose exec agent hermes config set agent.max_turns 15
+docker compose exec agent hermes config set agent.environment_probe false
+docker compose exec agent hermes config set approvals.mode off
+docker compose restart agent
+```
+This does not bypass the LLM. Hermes still reads the playbook, selects and invokes the
+`hris-tool` skill, and writes the final response. It only removes unrelated API tools such as
+`execute_code`, `cronjob`, browser, file editing, and delegation. Keep the broader WhatsApp
+toolset configured separately below. Approval prompts are disabled because the HTTP API has no
+interactive approval channel; Hermes' unconditional hardline command blocks remain active.
+
 ## 6a. Optional Hermes WhatsApp setup
 Hermes connects to WhatsApp through its built-in Baileys bridge. Use a dedicated demo number if
 possible, then link it from inside the agent container:

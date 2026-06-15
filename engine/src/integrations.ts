@@ -50,6 +50,7 @@ export const CONNECTORS: ConnectorDef[] = [
       { name: "hris.get_employee", label: "Get employee", description: "Look up a worker's profile and employment details." },
       { name: "hris.set_compensation", label: "Set compensation", description: "Record a worker's salary and pay details." },
       { name: "hris.update_employment", label: "Update employment status", description: "Change someone's status — active, on-leave, or leaving." },
+      { name: "workflow.activate_offboarding", label: "Activate offboarding", description: "Start the employee offboarding workflow.", wired: true },
       { name: "hris.list_employees", label: "List employees", description: "Browse workers by team or status." },
     ],
     triggers: [
@@ -108,6 +109,7 @@ export const CONNECTORS: ConnectorDef[] = [
       { name: "content.list_templates", label: "List templates", description: "Browse reusable message and email templates." },
       { name: "content.get_culture_video", label: "Get culture video", description: "Grab the onboarding culture video." },
       { name: "content.get_welcome_kit", label: "Get welcome kit", description: "Pull together the new-hire welcome kit." },
+      { name: "document.generate_termination_letter", label: "Generate termination letter", description: "Create an employee-facing termination letter.", wired: true },
     ],
   },
   {

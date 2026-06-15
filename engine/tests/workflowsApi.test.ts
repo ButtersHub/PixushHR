@@ -13,6 +13,7 @@ describe("/workflows + /capabilities", () => {
   it("GET /workflows lists the seeded onboarding workflow", async () => {
     const res = await app().app.inject({ method: "GET", url: "/workflows?tenant=papaya" });
     expect(res.json().map((w: any) => w.id)).toContain("onboarding");
+    expect(res.json().map((w: any) => w.id)).toContain("offboarding");
   });
 
   it("GET /workflows/:id returns the full node-graph", async () => {

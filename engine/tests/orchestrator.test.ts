@@ -70,6 +70,25 @@ describe("/execute playbook injection", () => {
     expect(joined).toContain("channel.send_message");
     expect(joined).toContain("Onboard Maya Cohen");
   });
+
+  it("injects the offboarding playbook for an offboarding scenario", async () => {
+    const hermes = new FakeHermes("Offboarding complete.");
+    const app = buildApp({ store: new InMemoryStore(), hermes });
+    await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: {
+        task: "Offboard Daniel Rosen on 2026-06-28",
+        context: { tenant: "papaya", scenario_id: "offboarding" },
+      },
+    });
+    const joined = hermes.lastMessages.map((m) => m.content).join("\n");
+    expect(joined).toMatch(/OFFBOARDING PLAYBOOK/);
+    expect(joined).toContain("document.generate_termination_letter");
+    expect(joined).toContain("calendar.create_invite");
+    expect(joined).toContain("workflow.activate_offboarding");
+    expect(joined).not.toMatch(/ONBOARDING PLAYBOOK/);
+  });
 });
 
 describe("runExecute (no-op tracing path)", () => {

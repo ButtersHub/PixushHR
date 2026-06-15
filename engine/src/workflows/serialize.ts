@@ -36,7 +36,7 @@ export function serializePlaybook(wf: WorkflowDefinition, availableTools: string
     `${wf.name.toUpperCase()} PLAYBOOK`,
     `Trigger: ${wf.trigger.type}`,
     ``,
-    `Follow these steps in order. For each step, call exactly one tool via the hris-tool skill`,
+    `Follow every step in order. For each step, call exactly one tool via the hris-tool skill`,
     `by sending a JSON {name, args} payload, then use the result to inform the next step.`,
     `Each step's \`args\` line tells you exactly what to pass:`,
     `  - literal "x"   → use the value verbatim`,
@@ -47,8 +47,11 @@ export function serializePlaybook(wf: WorkflowDefinition, availableTools: string
     `AVAILABLE TOOLS`,
     catalog,
     ``,
-    `Always include "tenant" in args (use "papaya" unless told otherwise). After completing all`,
-    `steps, reply with a warm, professional welcome message plus a one-line recap of what you did.`,
+    `Always include "tenant" in args (use "papaya" unless told otherwise). A step is complete only`,
+    `after its tool returns a fresh ok:true result. Never claim an action that lacks that result.`,
+    wf.id === "offboarding"
+      ? `Keep the termination reason only in the employee letter and HRIS record; never put it in the calendar invite. After all steps, reply respectfully with an auditable recap.`
+      : `After all steps, reply with a warm welcome message and an auditable recap.`,
   ].join("\n");
 }
 

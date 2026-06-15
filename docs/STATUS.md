@@ -101,7 +101,12 @@ reference/   third-party clones (sensei, hermes-agent, langfuse-skills) — giti
   `model.provider=openai-codex` and `model.default=gpt-5.5`; if `/execute` fails with
   `Codex Responses request 'model' must be a non-empty string`, repair with
   `hermes config set model.provider openai-codex` and `hermes config set model.default gpt-5.5`,
-  then restart `agent`.
+  then restart `agent`. For the non-interactive API surface, keep
+  `platform_toolsets.api_server: [skills, terminal]`, `agent.max_turns: 15`, and
+  `agent.environment_probe: false`. Set `approvals.mode: off` because the HTTP API cannot answer
+  interactive approval prompts. This prevents approval-blocked tool attempts and unrelated
+  cron/file exploration while retaining the LLM-driven `hris-tool` workflow and Hermes' hardline
+  command blocks.
 - **WhatsApp/Email demo notes:** Papaya-Ops group id is `120363408400308850@g.us`. Use
   `require_mention: true`, `group_policy: allowlist`, `display.platforms.whatsapp.tool_progress=off`,
   and keep `platform_toolsets.whatsapp: [hermes-whatsapp]` so the `send_message` tool is

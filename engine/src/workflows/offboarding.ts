@@ -1,0 +1,70 @@
+import type { WorkflowDefinition } from "./types.js";
+
+export const offboardingWorkflow: WorkflowDefinition = {
+  id: "offboarding",
+  name: "Offboarding",
+  version: 1,
+  trigger: { type: "offboard" },
+  root: "n1",
+  nodes: {
+    n1: {
+      id: "n1",
+      kind: "action",
+      capability: "hris.upsert_employee",
+      audience: "hr",
+      input: {
+        tenant: { kind: "literal", value: "papaya" },
+        id: { kind: "agent" },
+        name: { kind: "agent" },
+        role: { kind: "agent" },
+        department: { kind: "agent" },
+        employmentStatus: { kind: "literal", value: "terminating" },
+        terminationDate: { kind: "agent" },
+        lastWorkingDay: { kind: "agent" },
+        terminationReason: { kind: "agent" },
+      },
+      next: "n2",
+    },
+    n2: {
+      id: "n2",
+      kind: "action",
+      capability: "document.generate_termination_letter",
+      audience: "employee",
+      input: {
+        tenant: { kind: "literal", value: "papaya" },
+        employeeId: { kind: "agent" },
+        employeeName: { kind: "agent" },
+        effectiveDate: { kind: "agent" },
+        reason: { kind: "agent" },
+        body: { kind: "agent" },
+      },
+      next: "n3",
+    },
+    n3: {
+      id: "n3",
+      kind: "action",
+      capability: "calendar.create_invite",
+      audience: "team",
+      input: {
+        tenant: { kind: "literal", value: "papaya" },
+        title: { kind: "agent" },
+        date: { kind: "agent" },
+        attendees: { kind: "agent" },
+        location: { kind: "agent" },
+      },
+      next: "n4",
+    },
+    n4: {
+      id: "n4",
+      kind: "action",
+      capability: "workflow.activate_offboarding",
+      audience: "hr",
+      input: {
+        tenant: { kind: "literal", value: "papaya" },
+        employeeId: { kind: "agent" },
+        effectiveDate: { kind: "agent" },
+        stakeholders: { kind: "agent" },
+      },
+    },
+  },
+};

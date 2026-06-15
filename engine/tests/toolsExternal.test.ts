@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { z } from "zod";
 import { TOOLS } from "../src/tools.js";
 
 describe("ToolDef metadata", () => {
@@ -18,6 +19,18 @@ describe("ToolDef metadata", () => {
     expect(TOOLS["channel.send_message"].kind).toBe("engine-tool");
     expect(TOOLS["document.generate_termination_letter"].kind).toBe("engine-tool");
     expect(TOOLS["workflow.activate_offboarding"].kind).toBe("engine-tool");
+  });
+
+  it("wired tools declare an outputShape", () => {
+    expect(TOOLS["ats.get_contract"].outputShape).toBeInstanceOf(z.ZodObject);
+    expect(TOOLS["hris.upsert_employee"].outputShape).toBeInstanceOf(z.ZodObject);
+    expect(TOOLS["teams.add_member"].outputShape).toBeInstanceOf(z.ZodObject);
+    expect(TOOLS["calendar.create_invite"].outputShape).toBeInstanceOf(z.ZodObject);
+    expect(TOOLS["content.get_branding"].outputShape).toBeInstanceOf(z.ZodObject);
+    expect(TOOLS["channel.send_message"].outputShape).toBeInstanceOf(z.ZodObject);
+    expect(TOOLS["hiring_manager.ask"].outputShape).toBeInstanceOf(z.ZodObject);
+    expect(TOOLS["document.generate_termination_letter"].outputShape).toBeInstanceOf(z.ZodObject);
+    expect(TOOLS["workflow.activate_offboarding"].outputShape).toBeInstanceOf(z.ZodObject);
   });
 
   it("connector ids match real connector definitions", () => {

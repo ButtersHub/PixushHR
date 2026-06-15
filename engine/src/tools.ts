@@ -24,6 +24,8 @@ export interface ToolDef {
   label: string;
   purpose: string;
   schema: z.ZodObject<z.ZodRawShape>;
+  /** Output shape — drives the dashboard schema-tree renderer. Optional for legacy tools. */
+  outputShape?: z.ZodTypeAny;
   sideEffectful: boolean;
   /** runs the side-effect. Absent for kind:"external-hermes" tools (Hermes runs those). */
   run?: ToolFn;
@@ -92,6 +94,115 @@ const activateOffboardingSchema = z.object({
   stakeholders: z.array(z.string()).min(1),
 });
 
+// ── Output shapes ──────────────────────────────────────────────────────────
+// Drive the dashboard's schema-tree renderer (workflow editor + Integrations
+// side panel). Keep in sync with the run() function's return value.
+
+const upsertOutput = z.object({
+  ok: z.boolean(),
+  employee: z.object({
+    id: z.string(),
+    name: z.string(),
+    role: z.string(),
+    startDate: z.string().optional(),
+    department: z.string().optional(),
+    managerId: z.string().optional(),
+    employmentType: z.string().optional(),
+    employmentStatus: z.string().optional(),
+    terminationDate: z.string().optional(),
+    lastWorkingDay: z.string().optional(),
+    terminationReason: z.string().optional(),
+  }),
+});
+
+const contractOutput = z.object({
+  ok: z.boolean(),
+  contract: z.object({
+    candidateId: z.string(),
+    name: z.string(),
+    role: z.string(),
+    startDate: z.string(),
+    department: z.string(),
+    managerId: z.string(),
+    employmentType: z.string(),
+    signed: z.boolean(),
+  }),
+});
+
+const askOutput = z.object({
+  ok: z.boolean(),
+  answer: z.string(),
+  manager: z.object({ id: z.string(), name: z.string() }),
+});
+
+const teamsAddOutput = z.object({
+  ok: z.boolean(),
+  employeeId: z.string(),
+  teams: z.array(z.string()),
+});
+
+const inviteOutput = z.object({
+  ok: z.boolean(),
+  invite: z.object({
+    id: z.string(),
+    tenant: z.string(),
+    title: z.string(),
+    date: z.string(),
+    attendees: z.array(z.string()),
+    location: z.string(),
+  }),
+});
+
+const brandingOutput = z.object({
+  ok: z.boolean(),
+  branding: z.object({
+    companyStory: z.string(),
+    cultureVideoUrl: z.string(),
+    welcomeNote: z.string(),
+  }),
+});
+
+const sendOutput = z.object({
+  ok: z.boolean(),
+  message: z.object({
+    id: z.string(),
+    tenant: z.string(),
+    from: z.string(),
+    to: z.string(),
+    role: z.string(),
+    channel: z.enum(["email", "teams", "slack"]),
+    body: z.string(),
+    ts: z.string(),
+  }),
+});
+
+const terminationLetterOutput = z.object({
+  ok: z.boolean(),
+  document: z.object({
+    id: z.string(),
+    tenant: z.string(),
+    type: z.literal("termination_letter"),
+    employeeId: z.string(),
+    employeeName: z.string(),
+    effectiveDate: z.string(),
+    reason: z.string(),
+    body: z.string(),
+  }),
+});
+
+const activateOffboardingOutput = z.object({
+  ok: z.boolean(),
+  workflow: z.object({
+    id: z.string(),
+    tenant: z.string(),
+    workflow: z.literal("offboarding"),
+    employeeId: z.string(),
+    effectiveDate: z.string(),
+    stakeholders: z.array(z.string()),
+    status: z.literal("active"),
+  }),
+});
+
 export const TOOLS: Record<string, ToolDef> = {
   "hris.upsert_employee": {
     name: "hris.upsert_employee",
@@ -101,6 +212,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Update employee record",
     purpose: "Create or update the employee record in the HRIS (Shapes).",
     schema: upsertSchema,
+    outputShape: upsertOutput,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, ...emp } = parseArgs(upsertSchema, args);
@@ -121,6 +233,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Get signed contract",
     purpose: "Retrieve the signed contract for a candidate from the ATS (Comeet).",
     schema: getContractSchema,
+    outputShape: contractOutput,
     sideEffectful: false,
     run: async (store, args) => {
       const { tenant, candidateId } = parseArgs(getContractSchema, args);
@@ -145,6 +258,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Ask hiring manager",
     purpose: "Ask the hiring manager a question and get their answer (the collect-info step).",
     schema: askSchema,
+    outputShape: askOutput,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, managerId, question } = parseArgs(askSchema, args);
@@ -170,6 +284,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Add to team",
     purpose: "Add the new hire to one or more Microsoft Teams.",
     schema: teamsSchema,
+    outputShape: teamsAddOutput,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, employeeId, teams } = parseArgs(teamsSchema, args);
@@ -190,6 +305,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Schedule invite",
     purpose: "Schedule a calendar invite (logistics only — title, date, attendees, location).",
     schema: inviteSchema,
+    outputShape: inviteOutput,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, ...rest } = parseArgs(inviteSchema, args);
@@ -213,6 +329,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Generate termination letter",
     purpose: "Generate and retain an employee-facing termination letter with the authorized reason.",
     schema: terminationLetterSchema,
+    outputShape: terminationLetterOutput,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, ...letter } = parseArgs(terminationLetterSchema, args);
@@ -233,6 +350,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Activate offboarding workflow",
     purpose: "Activate the offboarding workflow for an employee and the approved logistics stakeholders.",
     schema: activateOffboardingSchema,
+    outputShape: activateOffboardingOutput,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, ...workflow } = parseArgs(activateOffboardingSchema, args);
@@ -253,6 +371,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Get branding pack",
     purpose: "Fetch Papaya branding content (company story, culture video, welcome note).",
     schema: brandingSchema,
+    outputShape: brandingOutput,
     sideEffectful: false,
     run: async (store, args) => {
       const { tenant } = parseArgs(brandingSchema, args);
@@ -274,6 +393,7 @@ export const TOOLS: Record<string, ToolDef> = {
     label: "Send message",
     purpose: "Send a warm message to a recipient over a channel (email/teams/slack); recorded for the Messages view.",
     schema: sendSchema,
+    outputShape: sendOutput,
     sideEffectful: true,
     run: async (store, args) => {
       const { tenant, to, role, channel, body } = parseArgs(sendSchema, args);

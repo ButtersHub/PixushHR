@@ -10,16 +10,23 @@ export type ToolFn = (store: InMemoryStore, args: unknown) => Promise<ToolResult
 
 // Role-port "integration" groups a tool under a capability area (decisions #13–15, #44).
 // Phase A10's integration registry will derive installed/enabled tools from these.
+export type ToolKind = "engine-tool" | "external-hermes";
+
 export interface ToolDef {
   name: string;
+  /** "engine-tool" = engine executes via `run`. "external-hermes" = Hermes runs natively
+   * (via its built-in gateway), then calls back via POST /side-effect to record the action. */
+  kind: ToolKind;
   integration: "HRIS" | "ATS" | "Channels" | "TaskBoard" | "Calendar" | "Content";
+  /** stable connector id (e.g. "shapes", "gmail") — drives connector-level gating in the editor. */
+  connector: string;
   /** friendly display name surfaced in audit + workflow editor (e.g. "Update employee record") */
   label: string;
   purpose: string;
   schema: z.ZodObject<z.ZodRawShape>;
   sideEffectful: boolean;
-  /** runs the side-effect. Does NOT emit audit entries — `executeTool` does that centrally. */
-  run: ToolFn;
+  /** runs the side-effect. Absent for kind:"external-hermes" tools (Hermes runs those). */
+  run?: ToolFn;
   /** derives `{target, summary}` for the audit entry from the parsed args + result. */
   summarize: (args: Record<string, unknown>, result: ToolResult) => { target: string; summary: string };
 }
@@ -88,7 +95,9 @@ const activateOffboardingSchema = z.object({
 export const TOOLS: Record<string, ToolDef> = {
   "hris.upsert_employee": {
     name: "hris.upsert_employee",
+    kind: "engine-tool",
     integration: "HRIS",
+    connector: "shapes",
     label: "Update employee record",
     purpose: "Create or update the employee record in the HRIS (Shapes).",
     schema: upsertSchema,
@@ -106,7 +115,9 @@ export const TOOLS: Record<string, ToolDef> = {
 
   "ats.get_contract": {
     name: "ats.get_contract",
+    kind: "engine-tool",
     integration: "ATS",
+    connector: "comeet",
     label: "Get signed contract",
     purpose: "Retrieve the signed contract for a candidate from the ATS (Comeet).",
     schema: getContractSchema,
@@ -128,7 +139,9 @@ export const TOOLS: Record<string, ToolDef> = {
 
   "hiring_manager.ask": {
     name: "hiring_manager.ask",
+    kind: "engine-tool",
     integration: "Channels",
+    connector: "teams",
     label: "Ask hiring manager",
     purpose: "Ask the hiring manager a question and get their answer (the collect-info step).",
     schema: askSchema,
@@ -151,7 +164,9 @@ export const TOOLS: Record<string, ToolDef> = {
 
   "teams.add_member": {
     name: "teams.add_member",
+    kind: "engine-tool",
     integration: "Channels",
+    connector: "teams",
     label: "Add to team",
     purpose: "Add the new hire to one or more Microsoft Teams.",
     schema: teamsSchema,
@@ -169,7 +184,9 @@ export const TOOLS: Record<string, ToolDef> = {
 
   "calendar.create_invite": {
     name: "calendar.create_invite",
+    kind: "engine-tool",
     integration: "Calendar",
+    connector: "calendar",
     label: "Schedule invite",
     purpose: "Schedule a calendar invite (logistics only — title, date, attendees, location).",
     schema: inviteSchema,
@@ -190,7 +207,9 @@ export const TOOLS: Record<string, ToolDef> = {
 
   "document.generate_termination_letter": {
     name: "document.generate_termination_letter",
+    kind: "engine-tool",
     integration: "Content",
+    connector: "branding",
     label: "Generate termination letter",
     purpose: "Generate and retain an employee-facing termination letter with the authorized reason.",
     schema: terminationLetterSchema,
@@ -208,7 +227,9 @@ export const TOOLS: Record<string, ToolDef> = {
 
   "workflow.activate_offboarding": {
     name: "workflow.activate_offboarding",
+    kind: "engine-tool",
     integration: "HRIS",
+    connector: "shapes",
     label: "Activate offboarding workflow",
     purpose: "Activate the offboarding workflow for an employee and the approved logistics stakeholders.",
     schema: activateOffboardingSchema,
@@ -226,7 +247,9 @@ export const TOOLS: Record<string, ToolDef> = {
 
   "content.get_branding": {
     name: "content.get_branding",
+    kind: "engine-tool",
     integration: "Content",
+    connector: "branding",
     label: "Get branding pack",
     purpose: "Fetch Papaya branding content (company story, culture video, welcome note).",
     schema: brandingSchema,
@@ -245,7 +268,9 @@ export const TOOLS: Record<string, ToolDef> = {
 
   "channel.send_message": {
     name: "channel.send_message",
+    kind: "engine-tool",
     integration: "Channels",
+    connector: "teams",
     label: "Send message",
     purpose: "Send a warm message to a recipient over a channel (email/teams/slack); recorded for the Messages view.",
     schema: sendSchema,
@@ -289,6 +314,9 @@ export async function executeTool(
   let error: unknown;
 
   try {
+    if (!tool.run) {
+      throw new Error(`tool ${name} has no run function (kind: ${tool.kind}) — invoke its native gateway and report via /side-effect`);
+    }
     result = await tool.run(store, args);
     return result;
   } catch (e) {

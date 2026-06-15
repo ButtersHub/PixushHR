@@ -2,10 +2,10 @@ FROM python:3.12-slim
 
 ARG HERMES_AGENT_REF=95715dcb03003eab086eb0494083e6dc1c65f3b3
 
-# Node 18+ for the Hermes WhatsApp bridge
+# Node 20+ for the Hermes WhatsApp bridge's current Baileys dependency.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates gnupg git \
- && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+ && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
  && apt-get install -y nodejs \
  && rm -rf /var/lib/apt/lists/*
 

@@ -80,6 +80,53 @@ describe("serializePlaybook", () => {
     expect(catalog).not.toContain("- channel.send_message");
   });
 
+  it("emits a 'use native gateway + call record_side_effect' block for external-hermes actions", () => {
+    const wf = {
+      id: "t", name: "Test", version: 1, trigger: { type: "manual" }, root: "n1",
+      nodes: {
+        n1: {
+          id: "n1", kind: "action", capability: "gmail.send_email",
+          input: {
+            tenant: { kind: "literal", value: "papaya" },
+            to: { kind: "ref", from: "step.x.email" },
+            subject: { kind: "agent" },
+            body: { kind: "agent" },
+          },
+        },
+      },
+    } as const;
+    const out = serializePlaybook(wf as any, ["gmail.send_email"]);
+    expect(out).toMatch(/native/i);
+    expect(out).toMatch(/gmail/i);
+    expect(out).toContain("record_side_effect");
+    expect(out).toMatch(/direction: ?["']?outbound/);
+  });
+
+  it("emits the same shape for whatsapp.send_message", () => {
+    const wf = {
+      id: "t", name: "Test", version: 1, trigger: { type: "manual" }, root: "n1",
+      nodes: {
+        n1: {
+          id: "n1", kind: "action", capability: "whatsapp.send_message",
+          input: { tenant: { kind: "literal", value: "papaya" }, to: { kind: "ref", from: "step.x.phone" }, body: { kind: "agent" } },
+        },
+      },
+    } as const;
+    const out = serializePlaybook(wf as any, ["whatsapp.send_message"]);
+    expect(out).toContain("record_side_effect");
+    expect(out).toMatch(/channel: ?["']?whatsapp/);
+  });
+
+  it("engine-tool steps render as before — no record_side_effect callback", () => {
+    const wf = {
+      id: "t", name: "Test", version: 1, trigger: { type: "manual" }, root: "n1",
+      nodes: { n1: { id: "n1", kind: "action", capability: "ats.get_contract", input: {} } },
+    } as const;
+    const out = serializePlaybook(wf as any, ["ats.get_contract"]);
+    expect(out).toContain("Call `ats.get_contract`");
+    expect(out).not.toContain("record_side_effect");
+  });
+
   it("renders a condition's then/else", () => {
     const wf = {
       id: "t", name: "T", version: 1, trigger: { type: "manual" }, root: "c1",

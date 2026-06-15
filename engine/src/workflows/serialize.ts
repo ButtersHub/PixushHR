@@ -1,4 +1,12 @@
 import type { WorkflowDefinition, WorkflowNode, ActionNode, InputBinding } from "./types.js";
+import { TOOLS } from "../tools.js";
+
+// Map an external-hermes connector id to the channel value the record_side_effect callback expects.
+// Hermes's native gateway name (e.g. "gmail") doesn't always match the channel id ("email").
+const CONNECTOR_TO_CHANNEL: Record<string, string> = {
+  gmail: "email",
+  whatsapp: "whatsapp",
+};
 
 // Walks the node-graph from `root` (depth-first through next / then-else) and renders a concise
 // numbered NL playbook + the available-tool catalog (decision #30, soft-first).
@@ -14,9 +22,24 @@ export function serializePlaybook(wf: WorkflowDefinition, availableTools: string
     if (!node) return;
     if (node.kind === "action") {
       n += 1;
-      lines.push(`${indent}${n}. Call \`${node.capability}\`${node.audience ? ` (audience: ${node.audience})` : ""}`);
-      const argsLine = renderArgs(node);
-      if (argsLine) lines.push(`${indent}   args: ${argsLine}`);
+      const audiencePart = node.audience ? ` (audience: ${node.audience})` : "";
+      const tool = TOOLS[node.capability];
+      if (tool?.kind === "external-hermes") {
+        const channel = CONNECTOR_TO_CHANNEL[tool.connector] ?? tool.connector;
+        lines.push(`${indent}${n}. Send via your native ${tool.connector} gateway${audiencePart}.`);
+        const argsLine = renderArgs(node);
+        if (argsLine) lines.push(`${indent}   args: ${argsLine}`);
+        const recordFields = channel === "email"
+          ? "{ channel: 'email', direction: 'outbound', to, subject, body }"
+          : `{ channel: '${channel}', direction: 'outbound', to, body }`;
+        lines.push(`${indent}   Then immediately call \`record_side_effect\` with:`);
+        lines.push(`${indent}     ${recordFields}`);
+        lines.push(`${indent}   Do not skip the callback — it is how the audit log gets the entry.`);
+      } else {
+        lines.push(`${indent}${n}. Call \`${node.capability}\`${audiencePart}`);
+        const argsLine = renderArgs(node);
+        if (argsLine) lines.push(`${indent}   args: ${argsLine}`);
+      }
       walk(node.next, indent);
     } else {
       lines.push(`${indent}If ${node.expr}:`);

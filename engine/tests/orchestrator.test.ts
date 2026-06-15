@@ -129,6 +129,39 @@ describe("/execute playbook injection", () => {
     expect(joined).not.toMatch(/ONBOARDING PLAYBOOK/);
   });
 
+  it("does not inject a workflow playbook for vague commands", async () => {
+    const hermes = new FakeHermes("Which thing should I do?");
+    const store = new InMemoryStore();
+    const app = buildApp({ store, hermes });
+    const res = await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: { task: "Do the thing.", context: { tenant: "papaya" } },
+    });
+    const joined = hermes.lastMessages.map((m) => m.content).join("\n");
+    expect(joined).toContain("ask a concise clarifying question");
+    expect(joined).not.toContain("ONBOARDING PLAYBOOK");
+    expect(joined).not.toContain("OFFBOARDING PLAYBOOK");
+    expect(joined).not.toContain("candidateId");
+    expect(res.json().structured.actions).toEqual([]);
+    expect(store.getAudit("papaya").filter((entry) => entry.actor === "pixush")).toHaveLength(0);
+  });
+
+  it("does not inject a workflow playbook for harmless creative prompts", async () => {
+    const hermes = new FakeHermes("Tiny badge, big relief.");
+    const app = buildApp({ store: new InMemoryStore(), hermes });
+    await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: { task: "Write a tweet announcing you got verified.", context: { tenant: "papaya" } },
+    });
+    const joined = hermes.lastMessages.map((m) => m.content).join("\n");
+    expect(joined).toContain("harmless creative");
+    expect(joined).toContain("tweets or short social posts");
+    expect(joined).not.toContain("ONBOARDING PLAYBOOK");
+    expect(joined).not.toContain("candidateId");
+  });
+
   it("uses validation-only LLM instructions for incomplete onboarding data", async () => {
     const hermes = new FakeHermes("I need the verified signed contract before proceeding.");
     const store = new InMemoryStore();

@@ -2,7 +2,7 @@
 
 const DEFAULT_AGENT_URL = "http://18.215.146.5:3000/execute";
 const DEFAULT_TENANT = "papaya";
-const DEFAULT_MAX_TASKS = 5;
+const DEFAULT_MAX_TASKS = 10;
 
 function usage() {
   console.log(`Usage:
@@ -15,9 +15,11 @@ Options:
   --max-tasks <n>       Safety cap. Default: ${DEFAULT_MAX_TASKS}
   --timeout-ms <n>      Per-request timeout. Default: 120000
   --resume-submit-url <url>
-                       Resume by submitting a known answer to this submit URL first
+                       Resume by submitting a known answer or next task to this submit URL
   --resume-response <text>
                        Response to submit with --resume-submit-url
+  --resume-task <text>
+                       Next task prompt to answer with Pixush before submitting
   --dry-run             Start/read tasks, but do not submit answers
   --help                Show this help
 
@@ -36,6 +38,7 @@ function parseArgs(argv) {
     timeoutMs: 120_000,
     resumeSubmitUrl: "",
     resumeResponse: "",
+    resumeTask: "",
     dryRun: false,
   };
   const positional = [];
@@ -61,6 +64,8 @@ function parseArgs(argv) {
       opts.resumeSubmitUrl = requireValue(argv, ++i, arg);
     } else if (arg === "--resume-response") {
       opts.resumeResponse = requireValue(argv, ++i, arg);
+    } else if (arg === "--resume-task") {
+      opts.resumeTask = requireValue(argv, ++i, arg);
     } else if (arg.startsWith("--")) {
       throw new Error(`Unknown option: ${arg}`);
     } else {
@@ -69,8 +74,13 @@ function parseArgs(argv) {
   }
 
   if (!positional[0]) throw new Error("Missing handshake URL.");
-  if (opts.resumeSubmitUrl && !opts.resumeResponse) throw new Error("--resume-submit-url requires --resume-response.");
-  if (opts.resumeResponse && !opts.resumeSubmitUrl) throw new Error("--resume-response requires --resume-submit-url.");
+  if (opts.resumeSubmitUrl && !opts.resumeResponse && !opts.resumeTask) {
+    throw new Error("--resume-submit-url requires --resume-response or --resume-task.");
+  }
+  if ((opts.resumeResponse || opts.resumeTask) && !opts.resumeSubmitUrl) {
+    throw new Error("--resume-response and --resume-task require --resume-submit-url.");
+  }
+  if (opts.resumeResponse && opts.resumeTask) throw new Error("Use either --resume-response or --resume-task, not both.");
   if (!Number.isFinite(opts.maxTasks) || opts.maxTasks < 1) throw new Error("--max-tasks must be a positive number.");
   if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs < 1000) throw new Error("--timeout-ms must be at least 1000.");
   return { ...opts, handshakeUrl: positional[0] };
@@ -194,7 +204,7 @@ async function main() {
   console.log(`Starting Sensei handshake: ${opts.handshakeUrl}`);
   console.log(`Pixush endpoint: ${opts.agentUrl}`);
   let payload;
-  if (opts.resumeSubmitUrl) {
+  if (opts.resumeSubmitUrl && opts.resumeResponse) {
     console.log(`Resuming from submit URL: ${opts.resumeSubmitUrl}`);
     payload = await fetchJson(resolveUrl(opts.resumeSubmitUrl, opts.handshakeUrl), {
       method: "POST",
@@ -206,6 +216,13 @@ async function main() {
       console.log("\n--- Sensei feedback ---");
       console.log(feedback);
     }
+  } else if (opts.resumeSubmitUrl && opts.resumeTask) {
+    payload = {
+      next_task: {
+        prompt: opts.resumeTask,
+        submit_url: opts.resumeSubmitUrl,
+      },
+    };
   } else {
     payload = await fetchJson(opts.handshakeUrl, { method: "POST" }, opts.timeoutMs);
   }

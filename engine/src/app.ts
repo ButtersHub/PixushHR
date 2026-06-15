@@ -290,6 +290,51 @@ export function buildApp(deps: Deps): FastifyInstance {
     return { ok: true };
   });
 
+  // ── Workflow CRUD (picker) ────────────────────────────────────────────
+  const createWorkflowSchema = z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    trigger: z.object({
+      type: z.string(),
+      connector: z.string(),
+      sample: z.record(z.unknown()).optional(),
+    }),
+  });
+
+  app.post<{ Querystring: { tenant?: string }; Body: unknown }>("/workflows", async (req, reply) => {
+    const tenant = req.query.tenant ?? "papaya";
+    const parsed = createWorkflowSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { ok: false, error: "invalid workflow seed" };
+    }
+    if (store.getWorkflow(tenant, parsed.data.id)) {
+      reply.code(409);
+      return { ok: false, error: "workflow already exists" };
+    }
+    const rootId = "n1";
+    const def: import("./workflows/types.js").WorkflowDefinition = {
+      id: parsed.data.id,
+      name: parsed.data.name,
+      version: 1,
+      trigger: parsed.data.trigger,
+      root: rootId,
+      nodes: { [rootId]: { id: rootId, kind: "action", capability: "", input: {} } },
+    };
+    store.setWorkflow(tenant, def);
+    return def;
+  });
+
+  app.delete<{ Params: { id: string }; Querystring: { tenant?: string } }>("/workflows/:id", async (req, reply) => {
+    const tenant = req.query.tenant ?? "papaya";
+    if (!store.getWorkflow(tenant, req.params.id)) {
+      reply.code(404);
+      return { ok: false, error: "unknown workflow" };
+    }
+    store.deleteWorkflow(tenant, req.params.id);
+    return { ok: true };
+  });
+
   // ── Async test runs (Test Flow drawer) ────────────────────────────────
   app.post<{ Params: { id: string }; Querystring: { tenant?: string } }>("/workflows/:id/test", async (req, reply) => {
     const tenant = req.query.tenant ?? "papaya";

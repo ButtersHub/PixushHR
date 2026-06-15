@@ -316,6 +316,10 @@ export class InMemoryStore {
     this.workflows.set(this.key(tenant, "workflow", def.id), def);
   }
 
+  deleteWorkflow(tenant: string, id: string): void {
+    this.workflows.delete(this.key(tenant, "workflow", id));
+  }
+
   listWorkflows(tenant: string): WorkflowDefinition[] {
     return [...this.workflows.entries()]
       .filter(([k]) => k.startsWith(`${tenant}#workflow#`))

@@ -1,6 +1,6 @@
 # PixushHR — Current Status & Handoff
 
-_Last updated: 2026-06-13. Read this first if you're a new session._
+_Last updated: 2026-06-15. Read this first if you're a new session._
 
 ## TL;DR
 Building the autonomous **Onboarding/Offboarding agent for Papaya Global** (Agentalent.ai "Big
@@ -48,6 +48,9 @@ Hermes model login; confirm multi-tool Langfuse trace + populated Messages/Audit
 - **`agent/`** (Hermes `gateway` in Docker, Python): OpenAI-compatible API the engine calls; model
   = **gpt-5.5 via OpenAI Codex device-auth** (the "OpenAI with auth, not API key" path). Reaches
   our domain tools via the **`hris-tool` skill** that HTTP-calls the engine (NO MCP, per decision).
+  WhatsApp is live via Hermes' Baileys bridge (Node 20 in the agent image; bridge scripts copied
+  into the installed package). Gmail SMTP/IMAP is configured for the demo account, and WhatsApp can
+  trigger outbound email through Hermes' built-in `send_message` tool.
 - **`dashboard/`** (React/Vite/TS): built on a **Claude-designed design system vendored at
   `dashboard/src/ui/`** (Tailwind + CSS-var tokens + lucide). App shell (top bar + dark nav) +
   **Live Run** screen (trigger→response, **tool-call trace** via `TraceRow` with brand icons, audit),
@@ -89,7 +92,21 @@ reference/   third-party clones (sensei, hermes-agent, langfuse-skills) — giti
   + Langfuse keys; `agent/.env` from the example (API_SERVER_KEY matches engine's HERMES_API_KEY).
 - **Done:** Hermes model configured (OpenAI Codex, persisted in `hermes-data` volume); `/execute`
   + `/audit` verified working on the public endpoint; Langfuse keys rotated (after rotating, the
-  engine was recreated via `docker compose up -d engine` to load the new keys).
+  engine was recreated via `docker compose up -d engine` to load the new keys). WhatsApp pairing
+  completed and persisted in the same `hermes-data` volume. Gmail app-password SMTP works:
+  `docker compose exec agent hermes send --to email:lev.vidrak@gmail.com "hello"` was verified.
+- **Hermes runtime config gotchas:** `agent/.env` controls platform enablement/secrets
+  (`WHATSAPP_ENABLED`, `EMAIL_*`, API server), but `~/.hermes/config.yaml` inside the Docker volume
+  controls persisted Hermes behavior (model, toolsets, group rules, display, compression). Keep:
+  `model.provider=openai-codex` and `model.default=gpt-5.5`; if `/execute` fails with
+  `Codex Responses request 'model' must be a non-empty string`, repair with
+  `hermes config set model.provider openai-codex` and `hermes config set model.default gpt-5.5`,
+  then restart `agent`.
+- **WhatsApp/Email demo notes:** Papaya-Ops group id is `120363408400308850@g.us`. Use
+  `require_mention: true`, `group_policy: allowlist`, `display.platforms.whatsapp.tool_progress=off`,
+  and keep `platform_toolsets.whatsapp: [hermes-whatsapp]` so the `send_message` tool is
+  available for WhatsApp-to-email requests. Add a SOUL.md instruction that explicit email requests
+  should call `send_message` with target `email:<address>`.
 - **Remaining:** point **Sensei/Agentalent** at `http://18.215.146.5:3000/execute` (health
   `/health`); open the dashboard at `http://18.215.146.5:8080`.
 - **Ops:** update via `git pull && docker compose up -d --build` (re-set `VITE_ENGINE_URL` if the
@@ -107,7 +124,6 @@ Langfuse OTel tracing (#52).
 - **SECURITY: rotate the Langfuse key pair** (exposed in chat) + change the dev `API_SERVER_KEY`/
   `HERMES_API_KEY`. `/tools/execute` is on the public `:3000` (demo-acceptable, synthetic data) —
   add a reverse proxy exposing only `/execute`+`/health` and TLS for real use.
-- Build the **WhatsApp bridge** in the agent image (Node `bridge.js`).
 - Widen the agent: **offboarding workflow**, harden the **confidentiality send-gate**, replace
   in-memory with **DynamoDB/S3**, populate `structured.actions[]` from Hermes tool-calls, author the
   **self-test Sensei suite** (requirements-traceable), the typed `WorkflowDefinition` engine.

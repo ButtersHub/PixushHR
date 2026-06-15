@@ -55,6 +55,8 @@ cp .env.example .env
 cp agent/.env.example agent/.env
 #   keep API_SERVER_KEY = "change-me-dev-key" (it must match the engine's HERMES_API_KEY in
 #   docker-compose.yml) — or change BOTH to a strong shared value.
+#   set WHATSAPP_ENABLED=true when using the WhatsApp gateway.
+#   set EMAIL_* values when using Gmail/SMTP from Hermes (details below).
 ```
 > `VITE_ENGINE_URL` is **baked into the dashboard at build time** (Vite). The compose build arg
 > reads it from `.env`, so it must be set to `http://PUBLIC_IP:3000` *before* you build (step 5),
@@ -73,6 +75,23 @@ docker compose restart agent                        # picks up the config
 ```
 This persists in the `hermes-data` volume — survives restarts/rebuilds.
 
+Sanity-check the persisted model after config changes:
+```bash
+docker compose exec agent bash -lc 'grep -nA8 "^model:" /root/.hermes/config.yaml'
+```
+Expected for the current demo:
+```yaml
+model:
+  provider: openai-codex
+  default: gpt-5.5
+```
+If `/execute` returns `Codex Responses request 'model' must be a non-empty string`, repair it with:
+```bash
+docker compose exec agent hermes config set model.provider openai-codex
+docker compose exec agent hermes config set model.default gpt-5.5
+docker compose restart agent
+```
+
 ## 6a. Optional Hermes WhatsApp setup
 Hermes connects to WhatsApp through its built-in Baileys bridge. Use a dedicated demo number if
 possible, then link it from inside the agent container:
@@ -86,6 +105,102 @@ Scan the QR from **WhatsApp → Linked devices → Link a device**. The session 
 `~/.hermes` in the persisted `hermes-data` volume, so rebuilds do not require a new QR scan unless
 WhatsApp unlinks the device. If `hermes whatsapp` asks who can message the bot, use comma-separated
 phone numbers with country code and no `+`, or `*` for the open demo.
+
+Current demo group config:
+- WhatsApp group: `Papaya-Ops`
+- Group id: `120363408400308850@g.us`
+
+Add or merge this into `/root/.hermes/config.yaml` inside the `agent` container:
+```yaml
+whatsapp:
+  reply_prefix: ""
+  require_mention: true
+  group_policy: allowlist
+  group_allow_from:
+    - "120363408400308850@g.us"
+
+platform_toolsets:
+  whatsapp: [hermes-whatsapp]
+
+display:
+  platforms:
+    whatsapp:
+      tool_progress: off
+      streaming: false
+      cleanup_progress: true
+
+compression:
+  codex_gpt55_autoraise: false
+```
+
+Notes:
+- `require_mention: true` means group messages need an `@bot-name` mention.
+- `group_policy: allowlist` keeps Hermes scoped to Papaya-Ops.
+- `tool_progress: off` suppresses internal tool/progress messages such as `skill_view` and
+  terminal snippets in the group.
+- `platform_toolsets.whatsapp: [hermes-whatsapp]` keeps Hermes' built-in `send_message` tool
+  available, which is required for WhatsApp-to-email.
+- `compression.codex_gpt55_autoraise: false` only disables the noisy Codex gpt-5.5 compaction
+  notice; it does not change the model.
+
+After editing `config.yaml`, restart the gateway:
+```bash
+docker compose restart agent
+```
+
+For cross-channel email requests, keep this instruction in `/root/.hermes/SOUL.md`:
+```text
+When a user asks to send an email, use the send_message tool with target email:<address>. Do not merely say that you sent it.
+```
+
+## 6b. Optional Hermes Email setup
+Hermes can use Gmail over IMAP/SMTP. Use a dedicated Gmail account and generate a Google **App
+Password** from Google Account → Security → 2-Step Verification → App passwords. Put the 16-character
+password in `agent/.env` without spaces.
+
+Example `agent/.env` email block:
+```bash
+EMAIL_ADDRESS=pixush.ops@gmail.com
+EMAIL_PASSWORD=xxxxxxxxxxxxxxxx
+EMAIL_IMAP_HOST=imap.gmail.com
+EMAIL_IMAP_PORT=993
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+EMAIL_POLL_INTERVAL=15
+EMAIL_ALLOWED_USERS=lev.vidrak@gmail.com
+EMAIL_HOME_ADDRESS=lev.vidrak@gmail.com
+EMAIL_HOME_ADDRESS_NAME=Lev
+```
+
+Important semantics:
+- `EMAIL_ALLOWED_USERS` controls who may command Hermes by emailing the inbox. It is **not** a
+  recipient allowlist for outbound email.
+- `EMAIL_HOME_ADDRESS` is the proactive/default delivery target. If present, Hermes may send gateway
+  lifecycle notifications there.
+- Changing `agent/.env` requires a recreate, not just restart:
+  `docker compose up -d --force-recreate agent`.
+
+Suppress email gateway restart/shutdown notifications while keeping email enabled:
+```yaml
+gateway:
+  platforms:
+    email:
+      gateway_restart_notification: false
+```
+
+Verify SMTP directly before testing WhatsApp-to-email:
+```bash
+docker compose exec agent hermes send --to email:lev.vidrak@gmail.com "hello"
+```
+
+Then test from WhatsApp:
+```text
+@US-AWS-LightSail-Hermes send an email to lev.vidrak@gmail.com saying hello
+```
+
+Hermes' built-in email sender is intentionally simple: it sends fresh one-shot messages with the
+subject `Hermes Agent`. Gmail may group repeated sends into the same conversation. Changing the Gmail
+sender display name is done in Gmail settings for the `pixush.ops@gmail.com` account, not in Hermes.
 
 ## 7. Verify
 ```bash
@@ -113,6 +228,9 @@ HTTP endpoint.
 ## Operating it
 - Logs: `docker compose logs -f engine` (or `agent` / `dashboard`).
 - Update: `git pull && docker compose up -d --build` (re-set `VITE_ENGINE_URL` if the IP changed).
+- Reload root `.env` changes for Langfuse/dashboard/engine vars with
+  `docker compose up -d --force-recreate engine`; reload `agent/.env` changes with
+  `docker compose up -d --force-recreate agent`.
 - Reset state: `docker compose down && docker volume rm pixushr_hermes-data` (forces a fresh Hermes
   login) — only if you want a clean slate.
 

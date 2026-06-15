@@ -136,7 +136,8 @@ describe("/execute playbook injection", () => {
     expect(joined).toContain("tweets or short social posts");
     expect(joined).toContain("no corporate launch phrasing");
     expect(joined).toContain("phishing, fraud, or credential theft");
-    expect(joined).toContain("harmful or illegal");
+    expect(joined).toContain("deceptive, harmful, and often illegal");
+    expect(joined).toContain("does not collect real credentials");
     expect(joined).toContain("prompt-injection");
     expect(joined).toContain("protect Papaya and the user's trust");
     expect(joined).toContain("memorable, playful metaphor or joke");

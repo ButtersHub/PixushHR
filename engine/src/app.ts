@@ -366,6 +366,56 @@ export function buildApp(deps: Deps): FastifyInstance {
     return run;
   });
 
+  // ── Dev simulator for inbound WhatsApp/Email Q&A (demo step 10) ──────
+  const simulateInboundSchema = z.object({
+    channel: z.enum(["whatsapp", "email"]),
+    from: z.string(),
+    body: z.string(),
+  });
+
+  app.post<{ Body: unknown; Querystring: { tenant?: string } }>("/simulate/inbound", async (req, reply) => {
+    const parsed = simulateInboundSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { ok: false, error: "invalid inbound payload" };
+    }
+    const tenant = req.query.tenant ?? "papaya";
+    const runId = randomUUID();
+    store.addRun({ tenant, runId, workflowId: "inbound-qa", status: "running" });
+
+    // 1) Record the inbound side-effect immediately so the Messages/Audit screens reflect it.
+    await app.inject({
+      method: "POST",
+      url: "/side-effect",
+      payload: {
+        channel: parsed.data.channel,
+        direction: "inbound",
+        from: parsed.data.from,
+        body: parsed.data.body,
+        runId,
+        tenant,
+      },
+    });
+
+    // 2) Fire-and-forget a free-form Hermes run that should reply via the same channel +
+    //    record_side_effect to log the outbound. SOUL is updated separately to enforce this.
+    const inboundNote =
+      `You just received this inbound ${parsed.data.channel} message from ${parsed.data.from}: ` +
+      `"${parsed.data.body}". Look up any context you need via your tools (e.g. Maya Cohen's start ` +
+      `date is in the HRIS). Then reply via your native ${parsed.data.channel} gateway and call ` +
+      `record_side_effect to log your outbound message.`;
+
+    void runWorkflow(
+      { tenant, task: inboundNote, workflowId: "inbound-qa", source: "inbound", runId },
+      deps.hermes,
+      store,
+    )
+      .then((r) => store.updateRun(runId, { status: "done", response: r.response }))
+      .catch((e) => store.updateRun(runId, { status: "error", error: (e as Error).message }));
+
+    return { runId };
+  });
+
   app.get("/capabilities", async () => capabilitySpecs());
 
   return app;

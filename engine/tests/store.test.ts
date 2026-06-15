@@ -54,6 +54,45 @@ describe("store — A10 connector state + workflows", () => {
     expect(s.getConnectorState("papaya", "slack")).toBeUndefined();
     expect(s.listWorkflows("papaya")).toHaveLength(0);
   });
+
+  describe("runs", () => {
+    it("addRun + getRun roundtrip with startedAt stamped", () => {
+      const s = new InMemoryStore();
+      const run = s.addRun({ tenant: "papaya", runId: "r1", workflowId: "onboarding", status: "running" });
+      expect(run.startedAt).toBeTypeOf("number");
+      expect(s.getRun("r1")?.status).toBe("running");
+      expect(s.getRun("r1")?.workflowId).toBe("onboarding");
+    });
+
+    it("updateRun transitions running → done and stamps endedAt", () => {
+      const s = new InMemoryStore();
+      s.addRun({ tenant: "papaya", runId: "r1", workflowId: "x", status: "running" });
+      s.updateRun("r1", { status: "done", response: "All set." });
+      const run = s.getRun("r1")!;
+      expect(run.status).toBe("done");
+      expect(run.response).toBe("All set.");
+      expect(run.endedAt).toBeTypeOf("number");
+    });
+
+    it("updateRun on running stays running with no endedAt", () => {
+      const s = new InMemoryStore();
+      s.addRun({ tenant: "papaya", runId: "r1", workflowId: "x", status: "running" });
+      s.updateRun("r1", { status: "running" });
+      expect(s.getRun("r1")?.endedAt).toBeUndefined();
+    });
+
+    it("updateRun on unknown runId is a no-op", () => {
+      const s = new InMemoryStore();
+      expect(() => s.updateRun("does-not-exist", { status: "done" })).not.toThrow();
+    });
+
+    it("reset() clears runs", () => {
+      const s = new InMemoryStore();
+      s.addRun({ tenant: "papaya", runId: "r1", workflowId: "x", status: "running" });
+      s.reset();
+      expect(s.getRun("r1")).toBeUndefined();
+    });
+  });
 });
 
 describe("store — phase A domain", () => {

@@ -37,6 +37,19 @@ export interface WorkflowRun {
   status: "active";
 }
 
+/** Tracks an asynchronous workflow run kicked off via POST /workflows/:id/test
+ *  (and any other fire-and-forget orchestrator call). Polled by /runs/:id. */
+export interface Run {
+  tenant: string;
+  runId: string;
+  workflowId: string;
+  status: "running" | "done" | "error";
+  response?: string;
+  error?: string;
+  startedAt: number;
+  endedAt?: number;
+}
+
 export interface Contract {
   candidateId: string;
   name: string;
@@ -137,6 +150,7 @@ export class InMemoryStore {
   private memberships: TeamMembership[] = [];
   private documents: GeneratedDocument[] = [];
   private workflowRuns: WorkflowRun[] = [];
+  private runs = new Map<string, Run>();
   private auditLog: AuditEntry[] = [];
   private connectorStates = new Map<string, ConnectorState>();
   private workflows = new Map<string, WorkflowDefinition>();
@@ -246,6 +260,28 @@ export class InMemoryStore {
     return this.workflowRuns.filter((r) => r.tenant === tenant);
   }
 
+  // ── Run tracking (async test runs polled via /runs/:id) ────────────────
+  addRun(input: Omit<Run, "startedAt">): Run {
+    const full: Run = { ...input, startedAt: Date.now() };
+    this.runs.set(full.runId, full);
+    return full;
+  }
+
+  updateRun(runId: string, patch: Partial<Run>): void {
+    const cur = this.runs.get(runId);
+    if (!cur) return;
+    const isTerminal = patch.status === "done" || patch.status === "error";
+    this.runs.set(runId, {
+      ...cur,
+      ...patch,
+      endedAt: isTerminal ? Date.now() : cur.endedAt,
+    });
+  }
+
+  getRun(runId: string): Run | undefined {
+    return this.runs.get(runId);
+  }
+
   audit(entry: Omit<AuditEntry, "id" | "ts">): AuditEntry {
     const full: AuditEntry = { ...entry, id: randomUUID(), ts: new Date().toISOString() };
     this.auditLog.push(full);
@@ -318,6 +354,7 @@ export class InMemoryStore {
     this.memberships = [];
     this.documents = [];
     this.workflowRuns = [];
+    this.runs.clear();
     this.auditLog = [];
     this.connectorStates.clear();
     this.workflows.clear();

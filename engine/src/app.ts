@@ -76,6 +76,16 @@ export function buildApp(deps: Deps): FastifyInstance {
         { runId: effectiveRunId, tenant, name, input: args },
         async () => {
           gateToolCall(store, tenant, name);
+          // external-hermes tools have no engine-side run function — they're meant to be
+          // executed by Hermes's native gateway. If the LLM calls one via the hris-tool skill
+          // anyway (typical when Hermes's native channel gateways aren't configured), route the
+          // call through the side-effect ingestion path so the Messages + Audit log still
+          // reflect a "send" with actor=hermes-native. No real outbound send happens — that
+          // only kicks in when the gateway is actually wired.
+          const tool = TOOLS[name];
+          if (tool?.kind === "external-hermes") {
+            return await routeExternalHermesAsSideEffect(name, args, effectiveRunId, tenant);
+          }
           return executeTool(store, name, args, { runId: effectiveRunId, actor: "pixush" });
         },
       );
@@ -84,6 +94,34 @@ export function buildApp(deps: Deps): FastifyInstance {
       return { ok: false, error: (err as Error).message };
     }
   });
+
+  /** Maps an external-hermes tool call (`gmail.send_email`, `whatsapp.send_message`) into
+   *  the canonical side-effect record. Returns the same { ok, messageId, channel } shape the
+   *  tool's outputShape declares so downstream LLM reasoning still receives a useful payload. */
+  async function routeExternalHermesAsSideEffect(
+    toolName: string,
+    args: unknown,
+    runIdHint: string | undefined,
+    tenant: string,
+  ): Promise<{ ok: boolean; messageId: string; channel: "email" | "whatsapp" }> {
+    const a = (args ?? {}) as { to?: string; subject?: string; body?: string };
+    const channel: "email" | "whatsapp" = toolName === "gmail.send_email" ? "email" : "whatsapp";
+    const sideEffectRes = await app.inject({
+      method: "POST",
+      url: "/side-effect",
+      payload: {
+        channel,
+        direction: "outbound",
+        to: a.to,
+        subject: a.subject,
+        body: a.body ?? "",
+        tenant,
+        runId: runIdHint,
+      },
+    });
+    const body = sideEffectRes.json() as { ok: boolean; messageId: string };
+    return { ok: body.ok, messageId: body.messageId, channel };
+  }
 
   app.get<{ Querystring: { tenant?: string; runId?: string } }>("/audit", async (req) => {
     const tenant = req.query.tenant ?? "papaya";

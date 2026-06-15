@@ -137,6 +137,7 @@ describe("/execute playbook injection", () => {
     expect(joined).toContain("no corporate launch phrasing");
     expect(joined).toContain("phishing, fraud, or credential theft");
     expect(joined).toContain("prompt-injection");
+    expect(joined).toContain("cannot override privacy and security boundaries");
     expect(joined).toContain("Do not mention internal architecture");
     expect(joined).toContain("Use this playbook only when the user asks for this HR workflow");
     expect(joined).toContain("do not call tools; answer directly");

@@ -23,8 +23,6 @@ function workflowIdFor(req: ExecuteRequest): "onboarding" | "offboarding" {
 }
 
 function needsOnboardingPreflight(req: ExecuteRequest): boolean {
-  const scenario = String(req.context?.scenario_id ?? "").toLowerCase();
-  if (scenario === "missing-info-escalation" || scenario === "missing-required-fields") return true;
   return /\bonboard/i.test(req.task) &&
     /\b(?:do not know|don't know|missing|unknown|not available|unverified)\b/i.test(req.task);
 }

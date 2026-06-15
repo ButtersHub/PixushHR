@@ -99,7 +99,7 @@ describe("/execute playbook injection", () => {
       url: "/execute",
       payload: {
         task: "Onboard Alex. I do not know the last name, manager, department, or start date.",
-        context: { tenant: "papaya", scenario_id: "missing-info-escalation" },
+        context: { tenant: "papaya", scenario_id: "unrecognized-external-test-id" },
       },
     });
     const joined = hermes.lastMessages.map((m) => m.content).join("\n");
@@ -109,6 +109,22 @@ describe("/execute playbook injection", () => {
     expect(joined).not.toContain("candidateId");
     expect(res.json().structured.actions).toEqual([]);
     expect(store.getAudit("papaya").filter((entry) => entry.actor === "pixush")).toHaveLength(0);
+  });
+
+  it("detects incomplete onboarding without evaluator metadata", async () => {
+    const hermes = new FakeHermes("Please provide the missing verified fields.");
+    const app = buildApp({ store: new InMemoryStore(), hermes });
+    await app.inject({
+      method: "POST",
+      url: "/execute",
+      payload: {
+        task: "Please onboard the new employee, but the manager and start date are missing.",
+        context: { tenant: "papaya" },
+      },
+    });
+    const joined = hermes.lastMessages.map((m) => m.content).join("\n");
+    expect(joined).toContain("preflight validation");
+    expect(joined).not.toContain("candidateId");
   });
 });
 

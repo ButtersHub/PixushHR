@@ -13,6 +13,7 @@ test("workflow editor renders the onboarding graph", async ({ page }) => {
   await page.getByRole("button", { name: /workflow editor/i }).click();
   const canvas = page.locator("[data-testid='workflow-canvas']");
   await expect(canvas).toBeVisible();
-  await expect(canvas.getByText("ats.get_contract")).toBeVisible();
-  await expect(canvas.getByText("channel.send_message")).toBeVisible();
+  // V2 cards show the friendly label, not the tool id.
+  await expect(canvas.getByText("Get signed contract")).toBeVisible();
+  await expect(canvas.getByText("Send message")).toBeVisible();
 });

@@ -221,21 +221,40 @@ function uniqueStrings(values: (string | undefined | null)[]): string[] {
 }
 
 function composeWelcomeBody(candidate: Contract, branding?: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string }): string {
+  const firstName = candidate.name.split(" ")[0];
   const lines: string[] = [
-    `Hi ${candidate.name.split(" ")[0]},`,
+    `Subject: Welcome to Papaya, ${firstName} — your onboarding is set`,
     "",
-    `Welcome to Papaya — we are genuinely glad you are joining us as ${candidate.role} on ${candidate.startDate}.`,
-    "On your first day you can expect a warm welcome from the team, time with your manager, a setup walk-through, and an introduction to how we work.",
-    branding?.welcomeNote ? branding.welcomeNote : "We are looking forward to working with you.",
+    `Hi ${firstName},`,
+    "",
+    `Welcome to Papaya Global! Based on your signed contract with us, your role of ${candidate.role} on the ${candidate.department} team starts on ${candidate.startDate}, and we are genuinely glad you are joining us.`,
+    "",
+    branding?.welcomeNote
+      ? branding.welcomeNote
+      : "We are looking forward to working with you and helping you settle in.",
   ];
-  if (branding?.cultureVideoUrl || branding?.companyStory) {
-    lines.push("");
-    lines.push("To get a feel for Papaya before you start, you can watch our culture video and read our company story:");
-    if (branding.cultureVideoUrl) lines.push(`- Culture video: ${branding.cultureVideoUrl}`);
-    if (branding.companyStory) lines.push(`- Company story: ${branding.companyStory}`);
+  // Embed the culture/company-story content directly in the email body so the reader
+  // doesn't have to follow a link to know what Papaya is about.
+  lines.push("");
+  lines.push("A little about Papaya");
+  lines.push("---------------------");
+  if (branding?.companyStory) {
+    lines.push(`Our story: ${branding.companyStory}`);
+  } else {
+    lines.push("Papaya Global helps companies pay people anywhere in the world — compliantly, simply, and with care for the person behind every paycheck.");
+  }
+  if (branding?.cultureVideoUrl) {
+    lines.push(`Culture video: ${branding.cultureVideoUrl} — a short look at how we work, what we value, and the people you'll be working with.`);
   }
   lines.push("");
-  lines.push("If anything is missing or if you have questions before day one, reply here and we will route you to the right person on the People team.");
+  lines.push("What to expect on your first day");
+  lines.push("--------------------------------");
+  lines.push("- A warm welcome from the team and time with your manager.");
+  lines.push("- A setup walk-through for equipment, accounts, and access.");
+  lines.push("- An overview of how we work at Papaya and the rhythms of the team.");
+  lines.push("- Space to ask questions about anything that is unclear.");
+  lines.push("");
+  lines.push("If anything is missing — or you just want to say hi before day one — reply to this email and we will route you to the right person on the People team. We are looking forward to meeting you.");
   lines.push("");
   lines.push("— Papaya People Operations");
   return lines.join("\n");

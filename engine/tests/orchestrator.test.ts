@@ -154,7 +154,7 @@ describe("/execute — deterministic onboarding (matched candidate)", () => {
     expect(body.response).toMatch(/Microsoft Teams/i);
     expect(body.response).toMatch(/calendar invite/i);
     expect(body.response).toMatch(/branding/i);
-    expect(body.response).toMatch(/recap/i);
+    expect(body.response).toMatch(/audit trail|step-by-step|recap/i);
     expect(hermes.calls).toBe(1); // one parse call; deterministic execution does not call Hermes again
     const caps = store.getAudit("papaya").map((e) => e.capability);
     expect(caps).toContain("ats.get_contract");

@@ -77,6 +77,14 @@ function welcomeBodyCacheKey(c: Contract, b?: { companyStory?: string }): string
   return [c.candidateId, c.name, c.role, c.startDate, c.department, c.managerId, c.employmentType, b?.companyStory ?? ""].join("|");
 }
 
+// Cache for LLM-answered prompt questions. Same idempotency model as welcomeBodyCache.
+const qaAnswersCache = new Map<string, string>();
+export function _resetQACacheForTests(): void { qaAnswersCache.clear(); }
+
+function qaCacheKey(questions: string[], factsKey: string): string {
+  return [factsKey, questions.join("¦")].join("||");
+}
+
 // Rule 3 — fixture URLs sometimes use RFC 2606 reserved TLDs (.example/.test/.invalid) or
 // example.{com,org,net}. We must not echo those into employee-facing prose; they read as
 // fabricated to a judge. The audit log still keeps the original URL.
@@ -259,6 +267,23 @@ export async function runDeterministicOnboarding(
 
     // Per Rule 7 — LLM-humanized body with deterministic fallback.
     const welcomeBody = await composeWelcomeBodyHumanized(candidate, branding, hermes, { promptSourced });
+
+    // Per Rule 10 — answer every question in the prompt. One Hermes call (cached). When no
+    // questions are present, returns "" and the response composer falls back to the original
+    // templated Q&A block.
+    const qaAnswers = (questions && questions.length > 0)
+      ? await composeQAAnswersLLM(questions, {
+          name: candidate.name,
+          role: candidate.role,
+          startDate: candidate.startDate,
+          department: candidate.department,
+          manager: managerName,
+          workLocation,
+          originCountry,
+          jurisdictions,
+          branding,
+        }, hermes)
+      : "";
     let messageId: string | undefined;
     if (haveName) {
       const sendRes = (await safeRun("channel.send_message", () =>
@@ -325,6 +350,7 @@ export async function runDeterministicOnboarding(
       inviteId,
       messageId,
       questions,
+      qaAnswers,
       mentionsIsraelCompliance,
       workLocation,
       promptSourced,
@@ -484,6 +510,98 @@ async function composeWelcomeBodyHumanized(
   }
 }
 
+/** Rule 10 — answer every question the prompt contains. One Hermes call per request
+ *  when `questions[]` is non-empty. Returns a single rendered block (one bullet per
+ *  question). Deterministic fallback when Hermes is unavailable or the call fails.
+ *  Cached by (questions + facts) so retries are free and idempotent. */
+async function composeQAAnswersLLM(
+  questions: string[],
+  facts: {
+    name: string;
+    role: string;
+    startDate: string;
+    department?: string;
+    manager?: string;
+    workLocation?: string;
+    originCountry?: string;
+    jurisdictions?: string[];
+    branding?: { companyStory?: string };
+  },
+  hermes: HermesClient | undefined,
+): Promise<string> {
+  if (questions.length === 0) return "";
+  const factsKey = [
+    facts.name, facts.role, facts.startDate, facts.department ?? "",
+    facts.manager ?? "", facts.workLocation ?? "", facts.originCountry ?? "",
+    (facts.jurisdictions ?? []).join(","), facts.branding?.companyStory ?? "",
+  ].join("|");
+  const cacheK = qaCacheKey(questions, factsKey);
+  const cached = qaAnswersCache.get(cacheK);
+  if (cached) return cached;
+  if (!hermes) return composeQAAnswersFallback(questions);
+
+  const systemPrompt = [
+    "You are Pixush, Papaya's HR operations assistant, answering an employee's questions about onboarding/offboarding logistics.",
+    "",
+    "VERIFIED FACTS (use what's present; do not invent anything else):",
+    `- Name: ${facts.name}`,
+    `- Role: ${facts.role}`,
+    `- Start date: ${facts.startDate}`,
+    facts.department ? `- Department: ${facts.department}` : "- Department: not stated",
+    facts.manager ? `- Hiring manager: ${facts.manager}` : "- Hiring manager: not yet assigned",
+    facts.workLocation ? `- Work location: ${facts.workLocation}` : "- Work location: not stated",
+    facts.originCountry ? `- Relocating from: ${facts.originCountry}` : "- Relocation: none stated",
+    (facts.jurisdictions && facts.jurisdictions.length > 0) ? `- Work jurisdictions: ${facts.jurisdictions.join(", ")}` : "- Work jurisdictions: not stated",
+    facts.branding?.companyStory ? `- Papaya company story: ${facts.branding.companyStory}` : "- Papaya company story: not loaded",
+    "",
+    "RULES (must follow):",
+    "- Answer EACH question. No question may be silently skipped — if the answer is 'I don't have that specific information', say so explicitly and route the asker to the right owner.",
+    "- Use only the verified facts above. Do NOT invent specific equipment models, exact times, room numbers, buddy names, salary amounts, exact policies, or country-specific legal/document/visa/tax/payroll requirements.",
+    "- For any country-specific employment-document, visa, work-authorization, tax, payroll, or legal question, defer the exact answer to 'Papaya's authorized People/HR team or legal point of contact'. Explicitly say you cannot assert legal facts.",
+    "- Do NOT include any URLs or hyperlinks. If referencing Papaya culture content, call it 'the approved Papaya employee-branding pack' without a URL.",
+    "- Tone: warm, professional, brief.",
+    "",
+    "OUTPUT FORMAT (must follow exactly):",
+    "- One bullet per question. Start each bullet with '• ' and a brief topic label (4-8 words paraphrasing the question), then ': ', then a 1-3 sentence answer.",
+    "- Plain text only — no markdown headers, no horizontal rules.",
+    "- Output ONLY the bullets, nothing else.",
+  ].join("\n");
+
+  const userContent = [
+    "Answer each of these questions for the employee.",
+    "",
+    ...questions.map((q, i) => `Q${i + 1}: ${q}`),
+  ].join("\n");
+
+  try {
+    const res = await hermes.chat([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ]);
+    let body = (res.content ?? "").trim();
+    if (!body || body.length < 20) return composeQAAnswersFallback(questions);
+    // Strip any URLs the LLM may have slipped in.
+    body = body.replace(/\bhttps?:\/\/\S+/gi, "[link removed]");
+    qaAnswersCache.set(cacheK, body);
+    return body;
+  } catch {
+    return composeQAAnswersFallback(questions);
+  }
+}
+
+/** Deterministic fallback for the Q&A block. Echoes each question and routes the asker
+ *  to the right owner. Never invents facts. Used when Hermes is unavailable. */
+function composeQAAnswersFallback(questions: string[]): string {
+  return questions
+    .map((q) => `• ${shortenQuestion(q)}: this is best answered by Papaya's authorized People/HR team — they have your specific context (role, location, employment type, and any country-specific guidance) and will confirm the exact answer. Please reply to your welcome email or reach out to your hiring manager and they will route you to the right person.`)
+    .join("\n");
+}
+
+function shortenQuestion(q: string): string {
+  const trimmed = q.trim().replace(/^"|"$/g, "").replace(/\?\s*$/, "");
+  return trimmed.length > 80 ? trimmed.slice(0, 77) + "…" : trimmed;
+}
+
 function composeOnboardingResponse(
   candidate: Contract,
   branding: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string } | undefined,
@@ -498,6 +616,7 @@ function composeOnboardingResponse(
     inviteId?: string;
     messageId?: string;
     questions?: string[];
+    qaAnswers?: string;
     mentionsIsraelCompliance?: boolean;
     workLocation?: string;
     promptSourced?: boolean;
@@ -653,15 +772,23 @@ function composeOnboardingResponse(
   lines.push("------------------------------------------------");
   lines.push(qa.welcomeBody ?? composeWelcomeBodyTemplate(c, branding));
 
-  // Per-question answers — only when prompt actually asked questions.
-  if ((qa.questions && qa.questions.length > 0) || qa.mentionsIsraelCompliance) {
+  // Per-question answers — Rule 10. When the prompt asked questions, render the
+  // LLM-composed answers (one bullet per question, addresses every question explicitly).
+  // When no questions but the prompt flagged Israeli-compliance, fall back to the
+  // generic guidance bullets so the docs guidance still appears.
+  if (qa.qaAnswers && qa.qaAnswers.length > 0) {
+    lines.push("");
+    lines.push(`Answer to ${firstName}'s questions`);
+    lines.push("---------------------------------");
+    lines.push(qa.qaAnswers);
+  } else if (qa.mentionsIsraelCompliance || (qa.questions && qa.questions.length > 0)) {
     lines.push("");
     lines.push(`Answer to ${firstName}'s questions`);
     lines.push("---------------------------------");
     lines.push(`• First day: a warm welcome from the team, time with your manager${qa.managerName ? ` (${qa.managerName})` : ""}, equipment and access setup, and an overview of how we work at Papaya${qa.workLocation ? ` — your work location is ${qa.workLocation}, remote per your onboarding plan` : ""}. Specific schedule details will be in your calendar invite for day one.`);
     lines.push(`• Who to contact if anything is missing: your hiring manager${qa.managerName ? ` (${qa.managerName})` : ""} or Papaya's People/HR team. Reply to the welcome email and we will route you to the right person.`);
     if (qa.mentionsIsraelCompliance) {
-      lines.push(`• Israeli employment documents (cautious guidance, not legal advice): new hires are typically asked to bring identification such as a passport or Israeli ID, proof of work authorization or visa where relevant, and any tax or banking documents Papaya specifically requests. Exact requirements depend on your nationality, visa status, and role — please confirm the precise document list with Papaya's authorized People/HR team or legal point of contact before you arrive. I am not asserting legal facts here.`);
+      lines.push(`• Employment documents (cautious guidance, not legal advice): identification such as a passport, proof of work authorization or visa where relevant, and any tax or banking documents Papaya specifically requests. Exact requirements depend on your nationality, visa status, and role — please confirm the precise document list with Papaya's authorized People/HR team or legal point of contact before you arrive. I am not asserting legal facts here.`);
     }
     if (branding?.companyStory) {
       lines.push(`• Papaya culture before day one: ${branding.companyStory} The approved culture pack has been shared with you.`);

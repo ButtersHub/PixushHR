@@ -17,12 +17,21 @@ export type Intent =
       mentionsIsraelCompliance?: boolean;
       hiringSource?: string;
       workLocation?: string;
+      /** Per-Rule-6: jurisdictions the prompt explicitly references (countries / regions). */
+      jurisdictions?: string[];
+      /** True if the prompt mentions visa / work-authorization / cross-border / per-country
+       *  payroll concerns that require People/Legal review before final HRIS activation. */
+      requiresJurisdictionalReview?: boolean;
+      /** Per-Rule-1: if the LLM detected a conflict (prompt vs contract details). We still
+       *  proceed (no all-or-nothing refusal) but the response surfaces the conflict and blocks
+       *  steps that depend on the disputed fields. */
+      hasConflict?: boolean;
     }
-  | { kind: "onboarding-mismatch"; extractedName: string; reason: "no-match" | "conflict" }
   | { kind: "onboarding-missing-info"; partialName?: string; reasons: string[] }
-  | { kind: "offboarding"; employee: ParsedTermination }
+  | { kind: "offboarding"; employee: ParsedTermination; jurisdictions?: string[]; requiresJurisdictionalReview?: boolean }
   | { kind: "offboarding-missing-info"; reasons: string[] }
   | { kind: "offboarding-employee-question"; employeeName?: string }
+  | { kind: "draft-or-revision"; instruction: string }
   | { kind: "general" };
 
 export interface ParsedTermination {
@@ -309,14 +318,23 @@ export function classifyIntent(opts: { task: string; tenant: string; scenarioId?
 
     if (fullName) {
       const contract = findContractByName(store, tenant, fullName);
-      if (conflict) {
-        return { kind: "onboarding-mismatch", extractedName: fullName, reason: "conflict" };
+      // Per-Rule-1: never refuse on identity-mismatch. If the fixture has the candidate, use
+      // it; otherwise synthesise a minimal contract from the prompt and let the orchestrator's
+      // partial-execution machinery decide which steps are safe vs blocked.
+      if (contract) {
+        return { kind: "onboarding-match", candidate: contract, extractedName: fullName, hasConflict: conflict };
       }
-      if (reasons.length > 0) {
-        return { kind: "onboarding-missing-info", partialName: fullName, reasons };
-      }
-      if (contract) return { kind: "onboarding-match", candidate: contract, extractedName: fullName };
-      return { kind: "onboarding-mismatch", extractedName: fullName, reason: "no-match" };
+      const synthetic: Contract = {
+        candidateId: `prompt-${deterministicId(fullName, "c")}`,
+        name: fullName,
+        role: "—",
+        startDate: "—",
+        department: "—",
+        managerId: "mgr-unknown",
+        employmentType: "—",
+        signed: true,
+      };
+      return { kind: "onboarding-match", candidate: synthetic, extractedName: fullName, promptSourced: true, hasConflict: conflict };
     }
 
     if (reasons.length > 0 || partial) {

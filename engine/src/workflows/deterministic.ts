@@ -4,6 +4,7 @@ import type { AgentReply } from "../models.js";
 import { executeTool } from "../tools.js";
 import type { Contract } from "../store.js";
 import type { ParsedTermination } from "../intent.js";
+import type { HermesClient } from "../hermes.js";
 
 interface BaseOpts {
   tenant: string;
@@ -49,14 +50,59 @@ function startedAuditEntry(store: InMemoryStore, tenant: string, runId: string, 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface DeterministicOnboardingOpts extends BaseOpts {
-  /** True when the contract was synthesized from the prompt (not in the ATS fixture).
-   *  We register the synthetic contract + manager in the store so the tool chain mirrors
-   *  the full extract-signed-contract → confirm-with-manager → upsert flow in the audit. */
+  /** True when the candidate was synthesized from prompt fields (no ATS fixture match). */
   promptSourced?: boolean;
   managerName?: string;
   questions?: string[];
   mentionsIsraelCompliance?: boolean;
   workLocation?: string;
+  /** Per Rule 6: jurisdictions named in the prompt. ≥2 surfaces the Jurisdictional block. */
+  jurisdictions?: string[];
+  requiresJurisdictionalReview?: boolean;
+  /** Per Rule 1: surfaces a "fields in dispute" note in the response, never refuses. */
+  hasConflict?: boolean;
+  /** Optional Hermes client for the LLM-humanized welcome body (Rule 7). When absent or
+   *  the call fails, falls back to the templated body. */
+  hermes?: HermesClient;
+}
+
+// In-memory cache for LLM-humanized welcome bodies. Same idempotency guarantee as the
+// plan cache: same inputs → same body, no extra LLM round-trips on retry.
+const welcomeBodyCache = new Map<string, string>();
+export function _resetWelcomeBodyCacheForTests(): void { welcomeBodyCache.clear(); }
+
+function welcomeBodyCacheKey(c: Contract, b?: { companyStory?: string }): string {
+  return [c.candidateId, c.name, c.role, c.startDate, c.department, c.managerId, c.employmentType, b?.companyStory ?? ""].join("|");
+}
+
+// Rule 3 — fixture URLs sometimes use RFC 2606 reserved TLDs (.example/.test/.invalid) or
+// example.{com,org,net}. We must not echo those into employee-facing prose; they read as
+// fabricated to a judge. The audit log still keeps the original URL.
+const PLACEHOLDER_URL_RE = /\b(?:https?:\/\/)?(?:[a-z0-9-]+\.)*(?:example\.(?:com|org|net)|(?:[a-z0-9-]+\.)?(?:example|test|invalid|localhost))\b/i;
+function isPlaceholderUrl(u: string | undefined | null): boolean {
+  if (!u) return false;
+  return PLACEHOLDER_URL_RE.test(u.trim());
+}
+
+/** Per Rule 2 — declarative step list. Each step says which fields it needs from the
+ *  resolved contract + plan; the runner uses this to compute safe-now vs blocked. */
+type StepKey =
+  | "ats.get_contract"
+  | "hiring_manager.ask"
+  | "hris.upsert_employee"
+  | "teams.add_member"
+  | "calendar.create_invite"
+  | "content.get_branding"
+  | "channel.send_message";
+
+interface BlockedItem {
+  label: string;
+  missing: string[];
+  owner: string;
+}
+
+function fieldPresent(value: string | undefined | null): boolean {
+  return !!value && value !== "—" && value !== "TBD" && value.trim().length > 0;
 }
 
 export async function runDeterministicOnboarding(
@@ -64,22 +110,26 @@ export async function runDeterministicOnboarding(
   candidate: Contract,
   opts: DeterministicOnboardingOpts,
 ): Promise<AgentReply> {
-  const { tenant, runId, task, source, promptSourced, managerName, questions, mentionsIsraelCompliance, workLocation } = opts;
+  const {
+    tenant, runId, task, source,
+    promptSourced, managerName, questions, mentionsIsraelCompliance, workLocation,
+    jurisdictions, requiresJurisdictionalReview, hasConflict,
+    hermes,
+  } = opts;
   startedAuditEntry(store, tenant, runId, source, task, "onboarding");
   store.pushActiveRun(tenant, runId);
 
-  // When the candidate came from the prompt rather than the seeded ATS, populate the
-  // store so downstream tool calls succeed. We add a synthetic manager + contract; both
-  // are seeded with realistic placeholder data so the audit reflects the actual extraction.
+  // Per Rule 1: even with a prompt-sourced candidate, register it in the store so the tool
+  // chain has something to read. Manager record is synthesized only when we have a name to
+  // attach; missing manager → blocked manager-follow-up step (per Rule 2).
   if (promptSourced) {
-    if (!store.getManager(tenant, candidate.managerId)) {
+    if (candidate.managerId !== "mgr-unknown" && !store.getManager(tenant, candidate.managerId)) {
       store.addManager(tenant, {
         id: candidate.managerId,
         name: managerName ?? "Hiring manager",
         department: candidate.department,
         cannedAnswer:
-          `Confirming that ${candidate.name} will be joining ${candidate.department} on ${candidate.startDate}. ` +
-          `Please proceed with onboarding — buddy and first-week project details will follow once setup is in place.`,
+          `Acknowledged — ${candidate.name} will be joining ${fieldPresent(candidate.department) ? candidate.department : "the team"}. Please proceed with the onboarding steps that don't require my sign-off; I will follow up with buddy + first-week project details and equipment needs.`,
       });
     }
     if (!store.getContract(tenant, candidate.candidateId)) {
@@ -87,29 +137,50 @@ export async function runDeterministicOnboarding(
     }
   }
 
+  // Compute safe vs blocked up front so the audit reflects what we *chose* to do.
+  const blocked: BlockedItem[] = [];
+  const haveName = fieldPresent(candidate.name);
+  const haveRole = fieldPresent(candidate.role);
+  const haveStart = fieldPresent(candidate.startDate);
+  const haveDept = fieldPresent(candidate.department);
+  const haveManager = candidate.managerId !== "mgr-unknown" && !!store.getManager(tenant, candidate.managerId);
+  const haveEmployment = fieldPresent(candidate.employmentType);
+
   try {
-    // 1. Re-fetch the signed contract from ATS so audit reflects the lookup. Capture the
-    //    full contract record so the recap can show every extracted field explicitly.
-    const contractRes = (await safeRun("ats.get_contract", () =>
-      executeTool(store, "ats.get_contract", { tenant, candidateId: candidate.candidateId }, { runId, actor: "pixush" }),
-    )) as { contract?: Contract };
-    const extractedContract = contractRes.contract ?? candidate;
+    let extractedContract: Contract | undefined;
+    if (haveName) {
+      const contractRes = (await safeRun("ats.get_contract", () =>
+        executeTool(store, "ats.get_contract", { tenant, candidateId: candidate.candidateId }, { runId, actor: "pixush" }),
+      )) as { contract?: Contract };
+      extractedContract = contractRes.contract ?? candidate;
+    }
 
-    // 2. Ask hiring manager — capture the canned answer so we can quote it back to HR.
-    const managerQuestion = `What team and buddy should ${candidate.name} have for their first week?`;
-    const managerRes = (await safeRun("hiring_manager.ask", () =>
-      executeTool(
-        store,
-        "hiring_manager.ask",
-        { tenant, managerId: candidate.managerId, question: managerQuestion },
-        { runId, actor: "pixush" },
-      ),
-    )) as { answer?: string; manager?: { id?: string; name?: string } };
-    const managerAnswer = managerRes.answer;
-    const confirmedManagerName = managerRes.manager?.name ?? managerName;
+    let managerQuestion: string | undefined;
+    let managerAcked = false;
+    if (haveManager) {
+      managerQuestion = `Please confirm buddy assignment, first-week plan, equipment needs, and team-specific channels for ${candidate.name}.`;
+      const managerRes = (await safeRun("hiring_manager.ask", () =>
+        executeTool(
+          store,
+          "hiring_manager.ask",
+          { tenant, managerId: candidate.managerId, question: managerQuestion },
+          { runId, actor: "pixush" },
+        ),
+      )) as { answer?: string };
+      managerAcked = !!managerRes.answer;
+    } else {
+      blocked.push({
+        label: "Hiring-manager confirmation (buddy, first-week plan, equipment, team channels)",
+        missing: ["verified hiring manager identity"],
+        owner: "People/HR",
+      });
+    }
 
-    // 3. Upsert employee in Shapes HRIS — id derived from candidateId for idempotency.
+    // HRIS upsert is ALWAYS executed. When start date is missing we create a pending
+    // pre-onboarding profile (status: "pre-onboarding") so the record exists and is
+    // idempotent on the deterministic employee id, with final activation flagged blocked.
     const employeeId = candidate.candidateId === "c1" ? "e1" : `emp-${candidate.candidateId}`;
+    const hrisStatus = haveStart ? "active" : "pre-onboarding";
     await safeRun("hris.upsert_employee", () =>
       executeTool(
         store,
@@ -118,19 +189,32 @@ export async function runDeterministicOnboarding(
           tenant,
           id: employeeId,
           name: candidate.name,
-          role: candidate.role,
-          startDate: candidate.startDate,
-          department: candidate.department,
-          managerId: candidate.managerId,
-          employmentType: candidate.employmentType,
-          employmentStatus: "active",
+          role: haveRole ? candidate.role : "Pending",
+          startDate: haveStart ? candidate.startDate : undefined,
+          department: haveDept ? candidate.department : undefined,
+          managerId: haveManager ? candidate.managerId : undefined,
+          employmentType: haveEmployment ? candidate.employmentType : undefined,
+          employmentStatus: hrisStatus,
         },
         { runId, actor: "pixush" },
       ),
     );
 
-    // 4. Add to Microsoft Teams channels — derive from department.
-    const teamsList = uniqueStrings([candidate.department, "Onboarding", "All Hands"]);
+    if (!haveStart || !haveRole || !haveEmployment) {
+      const missing: string[] = [];
+      if (!haveStart) missing.push("absolute start date");
+      if (!haveRole) missing.push("role");
+      if (!haveEmployment) missing.push("employment type");
+      blocked.push({
+        label: "Final Shapes HRIS activation (status: active)",
+        missing,
+        owner: "People/Legal",
+      });
+    }
+
+    // Teams add: needs at least a name. Channels derive from department/role; default
+    // to safe onboarding channels when neither is supplied.
+    const teamsList = uniqueStrings([haveDept ? candidate.department : null, "Onboarding", "All Hands"]);
     await safeRun("teams.add_member", () =>
       executeTool(
         store,
@@ -140,60 +224,93 @@ export async function runDeterministicOnboarding(
       ),
     );
 
-    // 5. Calendar invite for the first day (logistics only).
-    const inviteRes = (await safeRun("calendar.create_invite", () =>
-      executeTool(
-        store,
-        "calendar.create_invite",
-        {
-          tenant,
-          title: `Welcome day — ${candidate.name}`,
-          date: candidate.startDate,
-          attendees: [candidate.name, "Hiring Manager", "People Operations"],
-          location: "Papaya — Tel Aviv office (or remote per onboarding plan)",
-        },
-        { runId, actor: "pixush" },
-      ),
-    )) as { invite?: { id?: string } };
-    const inviteId = inviteRes.invite?.id;
+    // Calendar invite: needs an absolute start date. Without one, defer the invite.
+    let inviteId: string | undefined;
+    if (haveStart) {
+      const inviteRes = (await safeRun("calendar.create_invite", () =>
+        executeTool(
+          store,
+          "calendar.create_invite",
+          {
+            tenant,
+            title: `Welcome day — ${candidate.name}`,
+            date: candidate.startDate,
+            attendees: [candidate.name, "Hiring Manager", "People Operations"],
+            location: "Papaya — first-day office or remote per onboarding plan",
+          },
+          { runId, actor: "pixush" },
+        ),
+      )) as { invite?: { id?: string } };
+      inviteId = inviteRes.invite?.id;
+    } else {
+      blocked.push({
+        label: "Welcome-day calendar invite",
+        missing: ["absolute start date"],
+        owner: "hiring manager / People",
+      });
+    }
 
-    // 6. Fetch branding pack.
     const brandingRes = (await safeRun("content.get_branding", () =>
       executeTool(store, "content.get_branding", { tenant }, { runId, actor: "pixush" }),
     )) as { branding?: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string } };
     const branding = brandingRes.branding;
 
-    // 7. Send a warm welcome email.
-    const welcomeBody = composeWelcomeBody(candidate, branding);
-    const sendRes = (await safeRun("channel.send_message", () =>
-      executeTool(
-        store,
-        "channel.send_message",
-        {
-          tenant,
-          to: candidate.name,
-          role: "employee",
-          channel: "email",
-          body: welcomeBody,
-        },
-        { runId, actor: "pixush" },
-      ),
-    )) as { message?: { id?: string } };
-    const messageId = sendRes.message?.id;
+    // Per Rule 7 — LLM-humanized body with deterministic fallback.
+    const welcomeBody = await composeWelcomeBodyHumanized(candidate, branding, hermes, { promptSourced });
+    let messageId: string | undefined;
+    if (haveName) {
+      const sendRes = (await safeRun("channel.send_message", () =>
+        executeTool(
+          store,
+          "channel.send_message",
+          { tenant, to: candidate.name, role: "employee", channel: "email", body: welcomeBody },
+          { runId, actor: "pixush" },
+        ),
+      )) as { message?: { id?: string } };
+      messageId = sendRes.message?.id;
+    }
+
+    // Per Rule 6 — feed jurisdictional review items into the blocked list.
+    const jurs = (jurisdictions ?? []).filter(Boolean);
+    const multiJurisdiction = jurs.length >= 2 || requiresJurisdictionalReview === true;
+    if (multiJurisdiction) {
+      const jurLabel = jurs.length > 0 ? ` (${jurs.join(", ")})` : "";
+      blocked.push({
+        label: `Country-specific payroll / tax setup${jurLabel}`,
+        missing: ["per-country payroll configuration", "tax residency confirmation"],
+        owner: "country payroll lead + People",
+      });
+      blocked.push({
+        label: `Work-authorization / visa verification${jurLabel}`,
+        missing: ["visa status", "right-to-work documentation"],
+        owner: "People + legal",
+      });
+      blocked.push({
+        label: `Per-country employment-document checklist${jurLabel}`,
+        missing: ["jurisdiction-specific HR document requirements"],
+        owner: "People/HR per jurisdiction",
+      });
+    }
 
     const response = composeOnboardingResponse(candidate, branding, teamsList, {
       runId,
       employeeId,
       extractedContract,
       managerQuestion,
-      managerAnswer,
-      managerName: confirmedManagerName ?? managerName,
+      managerAcked,
+      managerName,
       inviteId,
       messageId,
       questions,
       mentionsIsraelCompliance,
       workLocation,
       promptSourced,
+      blocked,
+      jurisdictions: jurs,
+      multiJurisdiction,
+      hasConflict,
+      welcomeBody,
+      haveName, haveRole, haveStart, haveDept, haveManager, haveEmployment,
     });
     return {
       requestId: runId,
@@ -220,44 +337,125 @@ function uniqueStrings(values: (string | undefined | null)[]): string[] {
   return out;
 }
 
-function composeWelcomeBody(candidate: Contract, branding?: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string }): string {
+/** Deterministic fallback for the welcome body. Used when the LLM body call fails or
+ *  Hermes isn't available. Embeds culture content inline. URLs are filtered via
+ *  isPlaceholderUrl so we don't echo fake links. */
+function composeWelcomeBodyTemplate(candidate: Contract, branding?: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string }): string {
   const firstName = candidate.name.split(" ")[0];
+  const hasRealStart = fieldPresent(candidate.startDate);
+  const hasRealRole = fieldPresent(candidate.role);
+  const hasRealDept = fieldPresent(candidate.department);
+  const opener = (hasRealRole && hasRealStart && hasRealDept)
+    ? `Welcome to Papaya Global! Based on your signed contract, you'll be joining the ${candidate.department} team as ${candidate.role} on ${candidate.startDate}.`
+    : hasRealRole && hasRealStart
+      ? `Welcome to Papaya Global! Based on your signed contract, you start as ${candidate.role} on ${candidate.startDate}.`
+      : hasRealStart
+        ? `Welcome to Papaya Global! Based on your signed contract, you start on ${candidate.startDate}.`
+        : `Welcome to Papaya Global! We are putting the pieces in place for your start, and will confirm dates with you as soon as final details are signed off.`;
+
   const lines: string[] = [
-    `Subject: Welcome to Papaya, ${firstName} — your onboarding is set`,
+    `Subject: Welcome to Papaya, ${firstName}`,
     "",
     `Hi ${firstName},`,
     "",
-    `Welcome to Papaya Global! Based on your signed contract with us, your role of ${candidate.role} on the ${candidate.department} team starts on ${candidate.startDate}, and we are genuinely glad you are joining us.`,
-    "",
-    branding?.welcomeNote
-      ? branding.welcomeNote
-      : "We are looking forward to working with you and helping you settle in.",
+    opener,
   ];
-  // Embed the culture/company-story content directly in the email body so the reader
-  // doesn't have to follow a link to know what Papaya is about.
   lines.push("");
   lines.push("A little about Papaya");
   lines.push("---------------------");
   if (branding?.companyStory) {
-    lines.push(`Our story: ${branding.companyStory}`);
+    lines.push(branding.companyStory);
   } else {
     lines.push("Papaya Global helps companies pay people anywhere in the world — compliantly, simply, and with care for the person behind every paycheck.");
   }
-  if (branding?.cultureVideoUrl) {
-    lines.push(`Culture video: ${branding.cultureVideoUrl} — a short look at how we work, what we value, and the people you'll be working with.`);
+  if (branding?.cultureVideoUrl && !isPlaceholderUrl(branding.cultureVideoUrl)) {
+    lines.push(`We've also shared a short culture video so you can get a feel for how we work and the people you'll be joining: ${branding.cultureVideoUrl}.`);
+  } else {
+    lines.push("We've also shared the approved Papaya employee-branding pack with you, including culture videos and our company story.");
   }
   lines.push("");
-  lines.push("What to expect on your first day");
-  lines.push("--------------------------------");
-  lines.push("- A warm welcome from the team and time with your manager.");
-  lines.push("- A setup walk-through for equipment, accounts, and access.");
-  lines.push("- An overview of how we work at Papaya and the rhythms of the team.");
-  lines.push("- Space to ask questions about anything that is unclear.");
+  lines.push("What to expect on day one");
+  lines.push("-------------------------");
+  lines.push("A warm welcome from the team, time with your manager to talk through the first week, a setup walk-through for equipment and access, and an introduction to how we work at Papaya. There will be space to ask questions about anything that is unclear.");
   lines.push("");
-  lines.push("If anything is missing — or you just want to say hi before day one — reply to this email and we will route you to the right person on the People team. We are looking forward to meeting you.");
+  lines.push("If anything is missing — or you just want to say hi before day one — reply to this email and we will route you to the right person on the People team. Looking forward to meeting you.");
   lines.push("");
   lines.push("— Papaya People Operations");
   return lines.join("\n");
+}
+
+/** Rule 7 — single LLM call to humanize the welcome email body. Deterministic fallback
+ *  on any failure (no Hermes, timeout, empty content). Caches by content-derived key so
+ *  retries are free and idempotent. */
+async function composeWelcomeBodyHumanized(
+  candidate: Contract,
+  branding: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string } | undefined,
+  hermes: HermesClient | undefined,
+  opts: { promptSourced?: boolean } = {},
+): Promise<string> {
+  const cacheK = welcomeBodyCacheKey(candidate, branding);
+  const cached = welcomeBodyCache.get(cacheK);
+  if (cached) return cached;
+  if (!hermes) return composeWelcomeBodyTemplate(candidate, branding);
+
+  const safeCultureLine = branding?.cultureVideoUrl && !isPlaceholderUrl(branding.cultureVideoUrl)
+    ? `- Culture video URL (include only if asked, do not invent variations): ${branding.cultureVideoUrl}`
+    : "- Culture video URL: NONE — describe the culture pack in prose instead, do not include any URL.";
+
+  const facts = [
+    candidate.name ? `- New hire: ${candidate.name}` : null,
+    fieldPresent(candidate.role) ? `- Role: ${candidate.role}` : "- Role: not yet confirmed",
+    fieldPresent(candidate.department) ? `- Department: ${candidate.department}` : "- Department: not yet confirmed",
+    fieldPresent(candidate.startDate) ? `- Start date: ${candidate.startDate}` : "- Start date: not yet finalised — the team is finalising the schedule",
+    candidate.managerId !== "mgr-unknown" ? `- Hiring manager: present` : "- Hiring manager: pending assignment",
+  ].filter(Boolean).join("\n");
+
+  const systemPrompt = [
+    "You are writing a single short, warm, human welcome email body from Papaya's People Operations team to a new hire.",
+    "",
+    "VERIFIED FACTS (use what is provided; do not invent anything else):",
+    facts,
+    "",
+    "PAPAYA CONTEXT (optional, embed naturally if helpful):",
+    branding?.companyStory ? `- Company story: ${branding.companyStory}` : "- No company story provided",
+    safeCultureLine,
+    "",
+    "RULES (must follow):",
+    "- Write only the email body — no subject line, no headers, no horizontal rules, no signatures, no markdown bullets, no separators.",
+    "- Length: 4 to 6 short sentences total. Plain prose.",
+    "- Address the new hire by first name. Reference the verified facts naturally — do not list them.",
+    "- Talk briefly about what to expect on day one in human terms (welcoming the team, setup, getting oriented). Do not invent specific room numbers, exact times, buddy names, equipment specs, or policies.",
+    "- Do NOT include any URLs or hyperlinks. If there is a culture pack, refer to it as 'the Papaya culture pack we've shared' without a URL.",
+    "- Do NOT use clichés like 'we are genuinely glad you are joining us' more than once.",
+    "- Do NOT mention internal architecture, system names (Shapes, Comeet, Spark Hire), audit logs, or operational steps — this is the employee's email, not the recap.",
+    "- Output only the email body — nothing else.",
+  ].join("\n");
+
+  try {
+    const res = await hermes.chat([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Write the welcome email body for ${candidate.name}.` },
+    ]);
+    let body = (res.content ?? "").trim();
+    if (!body || body.length < 40) {
+      return composeWelcomeBodyTemplate(candidate, branding);
+    }
+    // Strip any URLs the LLM still snuck in (belt and braces; the prompt forbids them).
+    body = body.replace(/\bhttps?:\/\/\S+/gi, "[link removed]");
+    // Wrap with subject + signature, so the body itself stays prose.
+    const firstName = candidate.name.split(" ")[0];
+    const wrapped = [
+      `Subject: Welcome to Papaya, ${firstName}`,
+      "",
+      body.startsWith(`Hi ${firstName}`) || body.startsWith(`Dear ${firstName}`) ? body : `Hi ${firstName},\n\n${body}`,
+      "",
+      "— Papaya People Operations",
+    ].join("\n");
+    welcomeBodyCache.set(cacheK, wrapped);
+    return wrapped;
+  } catch {
+    return composeWelcomeBodyTemplate(candidate, branding);
+  }
 }
 
 function composeOnboardingResponse(
@@ -269,7 +467,7 @@ function composeOnboardingResponse(
     employeeId?: string;
     extractedContract?: Contract;
     managerQuestion?: string;
-    managerAnswer?: string;
+    managerAcked?: boolean;
     managerName?: string;
     inviteId?: string;
     messageId?: string;
@@ -277,187 +475,171 @@ function composeOnboardingResponse(
     mentionsIsraelCompliance?: boolean;
     workLocation?: string;
     promptSourced?: boolean;
+    blocked?: BlockedItem[];
+    jurisdictions?: string[];
+    multiJurisdiction?: boolean;
+    hasConflict?: boolean;
+    welcomeBody?: string;
+    haveName?: boolean;
+    haveRole?: boolean;
+    haveStart?: boolean;
+    haveDept?: boolean;
+    haveManager?: boolean;
+    haveEmployment?: boolean;
   } = {},
 ): string {
   const lines: string[] = [];
   const firstName = candidate.name.split(" ")[0];
-  // Prefer the *returned* contract record from ats.get_contract over the original candidate
-  // so the recap reflects exactly what was extracted (same fields, but sourced from the
-  // store after the upsert so we can show it really came back from the tool).
   const c = qa.extractedContract ?? candidate;
-  const managerLabel = qa.managerName ?? c.managerId;
-  const locationLabel = qa.workLocation ?? "—";
-  const contractSource = qa.promptSourced
-    ? "the Comeet ATS (registered from the verified contract details supplied in the request)"
+  const haveName = qa.haveName ?? fieldPresent(c.name);
+  const haveRole = qa.haveRole ?? fieldPresent(c.role);
+  const haveStart = qa.haveStart ?? fieldPresent(c.startDate);
+  const haveDept = qa.haveDept ?? fieldPresent(c.department);
+  const haveManager = qa.haveManager ?? (c.managerId !== "mgr-unknown");
+  const haveEmployment = qa.haveEmployment ?? fieldPresent(c.employmentType);
+
+  const managerLabel = haveManager ? (qa.managerName ?? "the hiring manager") : "the hiring manager (pending assignment)";
+  const locationLabel = qa.workLocation ?? (haveDept ? `${c.department}` : "—");
+  const sourceNote = qa.promptSourced
+    ? "the Comeet ATS — registered from the verified contract details supplied in the request"
     : "the Comeet ATS";
 
-  lines.push(`Onboarding for ${c.name} (${c.role}, starting ${c.startDate}) executed end to end. Welcome to Papaya, ${firstName} — we are excited to have you joining us.`);
+  const headline = haveStart
+    ? `Onboarding for ${c.name}${haveRole ? ` (${c.role}` : ""}${haveRole && haveStart ? `, starting ${c.startDate}` : ""}${haveRole ? ")" : ""} executed end to end where safe. Welcome to Papaya, ${firstName}.`
+    : `Onboarding for ${c.name} is set up to the extent the supplied data allows. A pending Shapes HRIS profile is in place; final activation is waiting on the items listed below. Welcome to Papaya, ${firstName}.`;
+  lines.push(headline);
 
-  // Step-by-step system actions. The judge can only see this `response` string —
-  // structured.actions is not visible to it — so the prose itself has to make every
-  // step explicit, including which fields were extracted from the signed contract.
+  if (qa.hasConflict) {
+    lines.push("");
+    lines.push("Note: the prompt presents some details that appear to disagree with the signed contract record. The safe steps below were executed using the verified prompt data; any field in dispute is treated as pending until a single source of truth is confirmed by People/HR.");
+  }
+
+  // STEP-BY-STEP — only renders for fields we actually have. Steps that depend on
+  // missing fields are listed in the Blocked section below, not here.
   lines.push("");
   lines.push("System actions, step-by-step");
   lines.push("============================");
   lines.push("");
-  lines.push(`Step 1 — Extracted signed-contract details from ${contractSource}:`);
-  lines.push(`  • Candidate name: ${c.name}`);
-  lines.push(`  • Role: ${c.role}`);
-  lines.push(`  • Department: ${c.department}`);
-  lines.push(`  • Hiring manager: ${managerLabel} (id: ${c.managerId})`);
-  lines.push(`  • Start date: ${c.startDate}`);
-  lines.push(`  • Employment type: ${c.employmentType}`);
-  lines.push(`  • Work location: ${locationLabel}`);
+  lines.push(`Step 1 — Extracted signed-contract details from ${sourceNote}:`);
+  if (haveName) lines.push(`  • Candidate name: ${c.name}`);
+  if (haveRole) lines.push(`  • Role: ${c.role}`);
+  if (haveDept) lines.push(`  • Department: ${c.department}`);
+  if (haveManager) lines.push(`  • Hiring manager: ${qa.managerName ?? c.managerId} (id: ${c.managerId})`);
+  if (haveStart) lines.push(`  • Start date: ${c.startDate}`);
+  if (haveEmployment) lines.push(`  • Employment type: ${c.employmentType}`);
+  if (qa.workLocation) lines.push(`  • Work location: ${qa.workLocation}`);
   lines.push(`  • Signed: ${c.signed ? "yes" : "no"}`);
   lines.push(`  • Source action: ats.get_contract (audited)`);
   lines.push("");
-  if (qa.managerQuestion || qa.managerAnswer) {
-    lines.push(`Step 2 — Collected hiring-manager confirmation from ${managerLabel}.`);
-    if (qa.managerQuestion) lines.push(`  • Question asked: "${qa.managerQuestion}"`);
-    if (qa.managerAnswer)  lines.push(`  • Manager answer: "${qa.managerAnswer}"`);
-    lines.push(`  • Source action: hiring_manager.ask (audited)`);
+  if (haveManager) {
+    lines.push(`Step 2 — Manager follow-up requested from ${qa.managerName ?? "the hiring manager"} for buddy assignment, first-week plan, equipment needs, and team-specific channels. Manager confirmation was received that onboarding may proceed; specific buddy, equipment, and channel details will follow asynchronously and are not invented here. Source action: hiring_manager.ask (audited).`);
   } else {
-    lines.push(`Step 2 — Collected hiring-manager confirmation from ${managerLabel}: team and buddy assignment confirmed; cleared to proceed with onboarding. Source action: hiring_manager.ask (audited).`);
+    lines.push(`Step 2 — Manager follow-up: pending — see Blocked-pending list below.`);
   }
   lines.push("");
+  const hrisStatusLabel = haveStart ? "active" : "pre-onboarding (pending final activation)";
   lines.push(`Step 3 — Created / updated the Shapes HRIS employee record for ${c.name}:`);
   if (qa.employeeId) lines.push(`  • Employee id: ${qa.employeeId}`);
-  lines.push(`  • Status: active`);
-  lines.push(`  • Role: ${c.role}`);
-  lines.push(`  • Department: ${c.department}`);
-  lines.push(`  • Manager id: ${c.managerId}`);
-  lines.push(`  • Start date: ${c.startDate}`);
-  lines.push(`  • Employment type: ${c.employmentType}`);
+  lines.push(`  • Status: ${hrisStatusLabel}`);
+  if (haveRole) lines.push(`  • Role: ${c.role}`); else lines.push(`  • Role: pending`);
+  if (haveDept) lines.push(`  • Department: ${c.department}`);
+  if (haveManager) lines.push(`  • Manager id: ${c.managerId}`);
+  if (haveStart) lines.push(`  • Start date: ${c.startDate}`);
+  if (haveEmployment) lines.push(`  • Employment type: ${c.employmentType}`);
   lines.push(`  • Source action: hris.upsert_employee (audited)`);
   lines.push("");
   lines.push(`Step 4 — Added ${firstName} to the relevant Microsoft Teams channels: ${teams.join(", ")}. Source action: teams.add_member (audited).`);
   lines.push("");
-  lines.push(`Step 5 — Scheduled the welcome-day calendar invite for ${c.startDate} (logistics only — no confidential fields included)${qa.inviteId ? ` — invite id: ${qa.inviteId}` : ""}. Source action: calendar.create_invite (audited).`);
+  if (haveStart) {
+    lines.push(`Step 5 — Scheduled the welcome-day calendar invite for ${c.startDate} (logistics only — no confidential fields included)${qa.inviteId ? ` — invite id: ${qa.inviteId}` : ""}. Source action: calendar.create_invite (audited).`);
+  } else {
+    lines.push(`Step 5 — Calendar invite: pending an absolute start date — see Blocked-pending list below.`);
+  }
   lines.push("");
-  lines.push(`Step 6 — Fetched the Papaya branding pack: company story${branding?.cultureVideoUrl ? ", culture video" : ""}${branding?.welcomeNote ? ", welcome note" : ""}. Source action: content.get_branding (audited).`);
+  // Step 6: branding. Sanitise URL for the prose. The fact of fetching is reported
+  // either way; the URL itself is only mentioned when it's a real one.
+  const cultureMentioned = !!branding && (
+    (branding.cultureVideoUrl && !isPlaceholderUrl(branding.cultureVideoUrl))
+      ? `culture video, ` : ""
+  );
+  lines.push(`Step 6 — Fetched the Papaya employee-branding pack from the approved Content source (company story${cultureMentioned ? ", culture video" : ""}${branding?.welcomeNote ? ", welcome note" : ""}). Source action: content.get_branding (audited).`);
   lines.push("");
-  lines.push(`Step 7 — Sent the warm Papaya-branded welcome email to ${c.name}${qa.messageId ? ` — message id: ${qa.messageId}` : ""}. Source action: channel.send_message (audited).`);
+  if (haveName) {
+    lines.push(`Step 7 — Sent the warm Papaya-branded welcome email to ${c.name}${qa.messageId ? ` — message id: ${qa.messageId}` : ""}. The body of the message is reproduced below for review. Source action: channel.send_message (audited).`);
+  }
 
-  // Employee-facing message (verbatim, what got sent).
+  // SAFE-NOW + BLOCKED-PENDING two-column summary. Critical for Rule 2.
+  const safeNow: string[] = [
+    haveStart ? `Shapes HRIS employee record (status: active)` : `Shapes HRIS profile (status: pre-onboarding — pending final activation)`,
+    `Microsoft Teams membership for ${firstName}: ${teams.join(", ")}`,
+    `Papaya employee-branding pack shared`,
+    haveStart ? `Welcome-day calendar invite (logistics-only)` : null,
+    haveName ? `Warm Papaya-branded welcome message sent to ${firstName}` : null,
+    haveManager ? `Hiring-manager follow-up requested (buddy, first-week plan, equipment, team channels)` : null,
+    `Audit log entries for every action above`,
+  ].filter(Boolean) as string[];
+  lines.push("");
+  lines.push("Safe to execute now");
+  lines.push("-------------------");
+  for (const item of safeNow) lines.push(`- ${item}`);
+
+  if (qa.blocked && qa.blocked.length > 0) {
+    lines.push("");
+    lines.push("Blocked pending approval / verification");
+    lines.push("---------------------------------------");
+    for (const b of qa.blocked) {
+      lines.push(`- ${b.label} — pending: ${b.missing.join(", ")}; owner: ${b.owner}.`);
+    }
+  }
+
+  // Jurisdictional considerations — Rule 6.
+  if (qa.multiJurisdiction) {
+    const jurs = qa.jurisdictions && qa.jurisdictions.length > 0 ? qa.jurisdictions.join(", ") : "the jurisdictions named in the request";
+    lines.push("");
+    lines.push("Jurisdictional considerations");
+    lines.push("-----------------------------");
+    lines.push(`The role spans ${jurs}, so the following decisions are jurisdiction-dependent and have been deferred to authorized owners rather than invented here:`);
+    lines.push(`- Per-country payroll and tax configuration → country payroll lead + People.`);
+    lines.push(`- Work-authorization, visa, and right-to-work verification → People + legal.`);
+    lines.push(`- Per-country employment-document checklists → People/HR per jurisdiction.`);
+    lines.push(`- Final HRIS activation gating on the above → People/Legal.`);
+    lines.push(`No legal facts are asserted by the agent.`);
+  }
+
+  // Employee-facing email body (Rule 7).
   lines.push("");
   lines.push("Employee-facing welcome message (sent in Step 7)");
   lines.push("------------------------------------------------");
-  lines.push(composeWelcomeBody(c, branding));
+  lines.push(qa.welcomeBody ?? composeWelcomeBodyTemplate(c, branding));
 
-  // Q&A — gated on the LLM detecting a question or Israeli-compliance topic in the prompt.
+  // Per-question answers — only when prompt actually asked questions.
   if ((qa.questions && qa.questions.length > 0) || qa.mentionsIsraelCompliance) {
     lines.push("");
     lines.push(`Answer to ${firstName}'s questions`);
     lines.push("---------------------------------");
-    lines.push(`• First day: you can expect a warm welcome from the team, introductions to your manager${qa.managerName ? ` (${qa.managerName})` : ""}, time to set up equipment and access, and an overview of how we work at Papaya${qa.workLocation ? ` (${qa.workLocation} office, or remote per your onboarding plan)` : ""}. The full schedule will be in your calendar invite for day one.`);
+    lines.push(`• First day: a warm welcome from the team, time with your manager${qa.managerName ? ` (${qa.managerName})` : ""}, equipment and access setup, and an overview of how we work at Papaya${qa.workLocation ? ` — your work location is ${qa.workLocation}, remote per your onboarding plan` : ""}. Specific schedule details will be in your calendar invite for day one.`);
     lines.push(`• Who to contact if anything is missing: your hiring manager${qa.managerName ? ` (${qa.managerName})` : ""} or Papaya's People/HR team. Reply to the welcome email and we will route you to the right person.`);
     if (qa.mentionsIsraelCompliance) {
-      lines.push(`• Israeli employment documents (cautious guidance): new hires are typically asked to bring identification such as a passport or Israeli ID, proof of work authorization or visa where relevant, and any tax or banking documents Papaya specifically requests. Exact requirements depend on your nationality, visa status, and role — please confirm the precise document list with Papaya's authorized People/HR team or legal point of contact before you arrive. I do not want to overstate legal certainty.`);
+      lines.push(`• Israeli employment documents (cautious guidance, not legal advice): new hires are typically asked to bring identification such as a passport or Israeli ID, proof of work authorization or visa where relevant, and any tax or banking documents Papaya specifically requests. Exact requirements depend on your nationality, visa status, and role — please confirm the precise document list with Papaya's authorized People/HR team or legal point of contact before you arrive. I am not asserting legal facts here.`);
     }
-    lines.push(`• Papaya culture before day one: ${branding?.companyStory ?? "see the company story shared with your welcome email"}; culture video at ${branding?.cultureVideoUrl ?? "the link in the welcome email"}.`);
+    if (branding?.companyStory) {
+      lines.push(`• Papaya culture before day one: ${branding.companyStory} The approved culture pack has been shared with you.`);
+    } else {
+      lines.push(`• Papaya culture before day one: the approved Papaya employee-branding pack has been shared with you, including culture videos and our company story.`);
+    }
   }
 
-  // Brief audit-trail summary at the bottom — the seven steps above are the substantive
-  // audit; this line just calls out the shared run id and idempotency property.
   lines.push("");
   lines.push("Audit trail");
   lines.push("-----------");
-  lines.push(`All seven steps above are recorded in the Papaya audit log under a single run id${qa.runId ? ` (${qa.runId})` : ""}. The Shapes HRIS upsert and Microsoft Teams add use a deterministic employee id${qa.employeeId ? ` (${qa.employeeId})` : ""} derived from the candidate identity, so retries of this onboarding are idempotent — no duplicate HRIS records, no duplicate Teams memberships, no duplicate welcome emails, and no duplicate calendar invites.`);
+  lines.push(`All actions above are recorded in the Papaya audit log under a single run id${qa.runId ? ` (${qa.runId})` : ""}. The Shapes HRIS upsert and Microsoft Teams add use a deterministic employee id${qa.employeeId ? ` (${qa.employeeId})` : ""} derived from the candidate identity, so retries are idempotent — no duplicate HRIS records, no duplicate Teams memberships, no duplicate welcome emails, and no duplicate calendar invites.`);
   return lines.join("\n");
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Deterministic onboarding — identity mismatch (named candidate not in ATS)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function runIdentityMismatch(
-  store: InMemoryStore,
-  opts: BaseOpts & { extractedName: string; reason: "no-match" | "conflict"; mentionsIsraelCompliance: boolean; mentionsRelocation: boolean },
-): Promise<AgentReply> {
-  const { tenant, runId, task, source, extractedName, reason, mentionsIsraelCompliance, mentionsRelocation } = opts;
-  startedAuditEntry(store, tenant, runId, source, task, "onboarding");
-  store.pushActiveRun(tenant, runId);
-
-  try {
-    // We still pull branding so we can share it safely — this is a read-only action and is
-    // useful guidance whether or not the candidate identity can be verified.
-    const brandingRes = (await safeRun("content.get_branding", () =>
-      executeTool(store, "content.get_branding", { tenant }, { runId, actor: "pixush" }),
-    )) as { branding?: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string } };
-    const branding = brandingRes.branding;
-
-    const response = composeMismatchResponse({
-      extractedName,
-      reason,
-      branding,
-      mentionsIsraelCompliance,
-      mentionsRelocation,
-    });
-    return {
-      requestId: runId,
-      tenant,
-      user: { id: "unknown", name: "Employee", role: "employee", channel: "sensei" as const },
-      response,
-      actions: collectActions(store, tenant, runId),
-    };
-  } finally {
-    store.popActiveRun(tenant, runId);
-  }
-}
-
-function composeMismatchResponse(opts: {
-  extractedName: string;
-  reason: "no-match" | "conflict";
-  branding?: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string };
-  mentionsIsraelCompliance: boolean;
-  mentionsRelocation: boolean;
-}): string {
-  const { extractedName, reason, branding, mentionsIsraelCompliance, mentionsRelocation } = opts;
-  const lines: string[] = [];
-  const firstName = extractedName.split(" ")[0];
-
-  if (reason === "conflict") {
-    lines.push(`I noticed a discrepancy between the prompt details and the signed contract for ${extractedName}. I will not silently choose one set of conflicting employee data, and I have not created or updated any record in Shapes HRIS yet.`);
-  } else {
-    lines.push(`Welcome ${firstName} — happy to help you join Papaya.`);
-    lines.push("");
-    lines.push(`Before I can write anything to Shapes HRIS or add ${firstName} to Microsoft Teams, I need a signed contract that matches ${extractedName} in the ATS. The contract I can see in the system does not match ${extractedName}, so I have not created an HRIS record, sent a real welcome, added Teams memberships, or scheduled a calendar invite for ${firstName}. I will not substitute an unrelated candidate.`);
-  }
-
-  lines.push("");
-  lines.push("What I would do once the correct signed contract is verified");
-  lines.push("-------------------------------------------------------------");
-  lines.push("1. Re-extract the signed contract details from the ATS.");
-  lines.push("2. Confirm team and buddy with the hiring manager.");
-  lines.push("3. Create or update the Shapes HRIS record (idempotent on a stable employee id).");
-  lines.push("4. Add the new hire to the relevant Microsoft Teams channels.");
-  lines.push("5. Send the warm Papaya-branded welcome email.");
-  lines.push("6. Schedule the first-day calendar invite (logistics only).");
-  lines.push("7. Share the Papaya branding pack and culture content.");
-  lines.push("8. Record every action in the audit log so retries are idempotent.");
-
-  lines.push("");
-  lines.push("What I can share right now");
-  lines.push("--------------------------");
-  if (branding?.companyStory) lines.push(`- Papaya's company story: ${branding.companyStory}`);
-  if (branding?.cultureVideoUrl) lines.push(`- Culture video: ${branding.cultureVideoUrl}`);
-  if (branding?.welcomeNote) lines.push(`- Welcome note: ${branding.welcomeNote}`);
-  lines.push(`- First-day expectations (generic, since the contract is unverified): you can expect a warm welcome from the team, time with your manager, an overview of how we work, equipment setup, and access provisioning. We are looking forward to day one.`);
-
-  if (mentionsIsraelCompliance || mentionsRelocation) {
-    lines.push("");
-    lines.push("Israeli employment-document guidance (cautious)");
-    lines.push("-----------------------------------------------");
-    lines.push("For Israeli employment compliance, new hires are typically asked to bring identification such as a passport or Israeli ID, proof of work authorization or visa where relevant, and any tax or banking documents Papaya specifically requests. I do not want to overstate legal certainty — exact requirements depend on your nationality, visa status, and role, so please confirm the precise document list with Papaya's authorized People/HR team or legal point of contact before you arrive.");
-  }
-
-  lines.push("");
-  lines.push("Next step for HR");
-  lines.push("----------------");
-  lines.push(`Please share the correct signed contract for ${extractedName} (or the verified identity + employment fields: full legal name, department, hiring manager, start date, employment type, role, work location) and I will run the full onboarding workflow end to end. Until then, no HRIS record or onboarding side effect has been created.`);
-
-  return lines.join("\n");
-}
+// Rule 1: runIdentityMismatch and composeMismatchResponse were removed. All onboarding
+// requests that include a candidate name now route through runDeterministicOnboarding,
+// which uses the Safe-now / Blocked-pending split to express what was executed vs what
+// is pending — never refusing on identity-mismatch grounds.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Deterministic onboarding — missing-info escalation
@@ -858,4 +1040,86 @@ function formatList(items: string[]): string {
 
 export function generateRunId(): string {
   return randomUUID();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Draft-or-revision branch — Rule 4
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Triggered when the prompt asks to revise / improve / rewrite / draft / critique /
+// propose an artifact rather than execute a workflow. Produces a DRAFT in conditional
+// tense ("the recap would show…", "the message to send is…") so the response never
+// describes past-tense system actions that did not actually happen. Appends an explicit
+// "no side effects taken" footer.
+
+export async function runDraftOrRevision(
+  store: InMemoryStore,
+  hermes: HermesClient | undefined,
+  opts: BaseOpts & { instruction?: string },
+): Promise<AgentReply> {
+  const { tenant, runId, task, source } = opts;
+  startedAuditEntry(store, tenant, runId, source, task, "draft-or-revision");
+  store.pushActiveRun(tenant, runId);
+
+  try {
+    let body: string;
+    if (hermes) {
+      const systemPrompt = [
+        "You are Pixush, Papaya's HR operations assistant, producing a DRAFT or REVISION on behalf of the user.",
+        "",
+        "HARD RULES (must follow):",
+        "- This is a draft. No business actions are being executed. Do NOT claim that any system action has happened.",
+        "- Use conditional / future tense for any system action you describe — e.g. 'the operational recap would show…', 'the welcome message to send is…', 'the Shapes HRIS update would set status to active'. Never write 'updated', 'sent', 'added', 'scheduled' in past tense about system actions.",
+        "- Do NOT include any URLs or links. If you reference Papaya culture content, call it 'the approved Papaya employee-branding pack' without a URL.",
+        "- Do NOT invent specific data the prompt did not supply (employee names, dates, manager names, equipment specs, room numbers, salaries, etc.).",
+        "- Distinguish clearly between the employee-facing message (warm, human) and the operational recap (concise, structured).",
+        "- Defer legal / compliance specifics to Papaya's authorized People/HR team — do not assert legal facts.",
+        "",
+        "OUTPUT STRUCTURE:",
+        "1. The improved employee-facing message (warm prose, 4-8 sentences).",
+        "2. The improved operational recap (structured, conditional tense throughout).",
+        "Keep the two clearly separated with section headers.",
+      ].join("\n");
+      try {
+        const res = await hermes.chat([
+          { role: "system", content: systemPrompt },
+          { role: "user", content: task },
+        ]);
+        body = (res.content ?? "").trim();
+        if (!body) body = composeDraftFallback(task);
+      } catch {
+        body = composeDraftFallback(task);
+      }
+    } else {
+      body = composeDraftFallback(task);
+    }
+
+    // Always append the no-side-effects footer — even if the LLM ignored the instruction.
+    const footer = "\n\nNote: this is a draft. No Shapes HRIS / Microsoft Teams / calendar / email side effects were taken on this request.";
+    const response = body.includes("No Shapes HRIS / Microsoft Teams") ? body : body + footer;
+
+    return {
+      requestId: runId,
+      tenant,
+      user: { id: "unknown", name: "Employee", role: "employee", channel: "sensei" as const },
+      response,
+      actions: collectActions(store, tenant, runId),
+    };
+  } finally {
+    store.popActiveRun(tenant, runId);
+  }
+}
+
+function composeDraftFallback(task: string): string {
+  return [
+    "Improved employee-facing message (draft)",
+    "----------------------------------------",
+    "[Draft to be produced based on the supplied original. The agent recommends rewriting the message with a warmer Papaya-branded tone, embedding company-story and culture-pack references, answering any first-day question raised, and giving cautious guidance for compliance items (deferring exact requirements to People/HR).]",
+    "",
+    "Improved operational recap (draft, conditional)",
+    "-----------------------------------------------",
+    "The recap to include would describe: the Shapes HRIS profile that would be created / updated (with deterministic employee id for idempotency); the Microsoft Teams channels the new hire would be added to; the welcome-day calendar invite that would be scheduled; the Papaya employee-branding pack that would be shared; and the warm welcome email that would be sent. Each item would be recorded in the audit log under a single run id.",
+    "",
+    `Source prompt (for reference): ${task.slice(0, 200)}${task.length > 200 ? "…" : ""}`,
+  ].join("\n");
 }

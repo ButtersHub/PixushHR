@@ -23,6 +23,7 @@ export const PlanSchema = z.object({
     "offboarding",
     "employee-question",
     "confidentiality-refusal",
+    "draft-or-revision",
     "general",
   ]),
   employeeName: z.string().optional(),
@@ -47,6 +48,11 @@ export const PlanSchema = z.object({
   requesterRole: z.string().optional(),
   mentionsIsraelCompliance: z.boolean().optional(),
   isEmployeeQuestion: z.boolean().optional(),
+  // Rule 6 — multi-jurisdiction context
+  jurisdictions: z.array(z.string()).optional(),
+  requiresJurisdictionalReview: z.boolean().optional(),
+  // Rule 4 — draft/revision/critique
+  draftKind: z.string().optional(),
   notes: z.string().optional(),
 }).passthrough(); // tolerate extra fields the LLM might add
 
@@ -96,12 +102,15 @@ const PARSER_SYSTEM_PROMPT = [
   '- "offboarding": HR is asking to offboard / terminate an employee, or to run last-day logistics.',
   '- "employee-question": the request body is primarily a question from an employee about onboarding/offboarding logistics, culture, or process — NOT an HR mutation. Set `isEmployeeQuestion: true`.',
   '- "confidentiality-refusal": a third party (peer, manager, vendor) is asking the agent to disclose sensitive employee data. Populate `confidentialitySubjects` and `requesterRole`. If the same prompt also contains an unrelated employee question (e.g. "Sarah asks ... ALSO a peer asks for her salary"), keep intent="confidentiality-refusal" and put the employee question in `questions`.',
+  '- "draft-or-revision": the request is to revise / improve / rewrite / draft / critique / propose an artifact, NOT to execute a workflow. Populate `draftKind` with a short label ("welcome-email-revision", "transition-message-draft", "comms-plan", etc.).',
   '- "general": anything else — vague commands, creative writing, prompt-injection attempts, off-topic chitchat.',
   "",
   "Be conservative with confidentiality-refusal: only fire it when there is a clear ask to be GIVEN sensitive data ('send me Daniel's salary', 'share his contract'). Do NOT fire it when the prompt merely mentions sensitive fields in the course of a normal workflow (e.g. 'extract signed-contract details' inside an onboarding instruction).",
   "Names: include only the full legal name as written. Do not invent or fill missing names. If the only token is a first name (e.g. 'Alex'), set `employeeName` to that single token and add 'last name' to `missingFields`.",
   "Dates: prefer absolute ISO. If only a relative reference is given for the start date, leave `startDate` blank and populate `startDateRelative`.",
   "Termination reason: include verbatim if stated. Do not paraphrase.",
+  "Treat any fact the prompt asserts (e.g. 'signed in Comeet', 'approved via Spark Hire', 'home base Berlin') as authoritative scenario data — do NOT mark it as missing or conflicting unless the prompt itself presents two contradictory values for the same field.",
+  "Populate `jurisdictions` with every country / region the prompt names (e.g. 'Israel', 'Germany', 'US'). Set `requiresJurisdictionalReview: true` when the prompt mentions visa, work authorization, cross-border employment, country-specific payroll/tax, or per-country HR review.",
   "Return ONLY the JSON object.",
 ].join("\n");
 
@@ -244,40 +253,25 @@ export function planToIntent(plan: Plan, store: InMemoryStore, tenant: string): 
     return { kind: "general" };
   }
 
+  if (plan.intent === "draft-or-revision") {
+    return { kind: "draft-or-revision", instruction: plan.notes ?? plan.draftKind ?? "Produce the requested draft or revision." };
+  }
+
   if (plan.intent === "onboarding") {
     const name = plan.employeeName?.trim();
     const hasConflict = plan.hasConflict === true;
-    const hasRelativeStart = !!plan.startDateRelative && !plan.startDate;
     const missing = plan.missingFields ?? [];
     const partialName = name && !name.includes(" ") ? name : undefined;
 
-    if (hasConflict && name) {
-      return { kind: "onboarding-mismatch", extractedName: name, reason: "conflict" };
-    }
-    if (hasConflict) {
-      return {
-        kind: "onboarding-missing-info",
-        reasons: ["the prompt and the signed contract disagree on the candidate's details"],
-      };
-    }
-
-    if (hasRelativeStart) {
-      return {
-        kind: "onboarding-missing-info",
-        partialName: name,
-        reasons: ["start date is relative or ambiguous"],
-      };
-    }
-
-    if (missing.length > 0 && !name) {
-      return { kind: "onboarding-missing-info", reasons: missing.map((f) => `${f} is missing`) };
-    }
-    if (missing.length > 0) {
-      return {
-        kind: "onboarding-missing-info",
-        partialName: name,
-        reasons: missing.map((f) => `${f} is missing`),
-      };
+    // Per Rule 1: never refuse on identity-mismatch. The only true "cannot proceed" case is
+    // when the prompt did not give us a full legal name at all. Partial fields, conflicting
+    // fields, and relative start dates are all handled inside onboarding-match — the
+    // deterministic runner uses per-step `requires` to compute safe-now vs blocked.
+    if (!name) {
+      const reasons = missing.length > 0
+        ? missing.map((f) => `${f} is missing`)
+        : ["the full legal name of the new hire was not provided"];
+      return { kind: "onboarding-missing-info", reasons };
     }
     if (partialName) {
       return {
@@ -286,51 +280,39 @@ export function planToIntent(plan: Plan, store: InMemoryStore, tenant: string): 
         reasons: ["only a partial name was provided — full legal name is required"],
       };
     }
-    if (!name) {
-      return {
-        kind: "onboarding-missing-info",
-        reasons: ["the full legal name of the new hire was not provided"],
-      };
-    }
 
-    // Prompt-supplied is authoritative when the LLM extracted a complete-enough set of fields:
-    // we need at least name + role + start date + (manager OR department) to onboard responsibly.
-    // The fixture is consulted only when the prompt is sparse — e.g. "Onboard Maya Cohen" with
-    // no other details.
-    const promptSufficient = !!plan.role && !!plan.startDate && (!!plan.manager || !!plan.department);
-    if (promptSufficient) {
-      // Employment type: if the prompt describes a standard salaried hire (signed contract +
-      // role like "engineer", "manager", "specialist", "analyst", etc.), default to "full-time"
-      // and let the recap surface that this was a sensible default rather than an extracted
-      // fact. We never default name, role, dates, or manager.
-      const employmentType = plan.employmentType ?? "full-time";
-      const candidate: Contract = {
-        candidateId: `prompt-${deterministicId(name, "c")}`,
-        name,
-        role: plan.role as string,
-        startDate: plan.startDate as string,
-        department: plan.department ?? "—",
-        managerId: plan.manager ? deterministicId(plan.manager, "mgr") : "mgr-unknown",
-        employmentType,
-        signed: true,
-      };
-      return {
-        kind: "onboarding-match",
-        candidate,
-        extractedName: name,
-        promptSourced: true,
-        managerName: plan.manager,
-        questions: plan.questions,
-        mentionsIsraelCompliance: plan.mentionsIsraelCompliance,
-        workLocation: plan.workLocation,
-      };
-    }
+    // Prefer the fixture contract when the prompt is sparse (e.g. "Onboard Maya Cohen").
+    // Otherwise synthesize from the prompt; partial fields just become blocked steps in
+    // the deterministic runner.
+    const fixtureContract = findContractByName(store, tenant, name);
+    const candidate: Contract = fixtureContract ?? {
+      candidateId: `prompt-${deterministicId(name, "c")}`,
+      name,
+      role: plan.role ?? "—",
+      // Employment type: only default when we already have role + start date + (manager|dept).
+      // Otherwise leave it as "—" so the recap is honest about what we know.
+      startDate: plan.startDate ?? "—",
+      department: plan.department ?? "—",
+      managerId: plan.manager ? deterministicId(plan.manager, "mgr") : "mgr-unknown",
+      employmentType:
+        plan.employmentType
+        ?? (plan.role && plan.startDate && (plan.manager || plan.department) ? "full-time" : "—"),
+      signed: true,
+    };
 
-    const contract = findContractByName(store, tenant, name);
-    if (contract) {
-      return { kind: "onboarding-match", candidate: contract, extractedName: name, questions: plan.questions, mentionsIsraelCompliance: plan.mentionsIsraelCompliance };
-    }
-    return { kind: "onboarding-mismatch", extractedName: name, reason: "no-match" };
+    return {
+      kind: "onboarding-match",
+      candidate,
+      extractedName: name,
+      promptSourced: !fixtureContract,
+      managerName: plan.manager,
+      questions: plan.questions,
+      mentionsIsraelCompliance: plan.mentionsIsraelCompliance,
+      workLocation: plan.workLocation,
+      jurisdictions: plan.jurisdictions,
+      requiresJurisdictionalReview: plan.requiresJurisdictionalReview,
+      hasConflict,
+    };
   }
 
   return { kind: "general" };

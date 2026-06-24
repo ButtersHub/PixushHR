@@ -155,7 +155,10 @@ describe("/execute — deterministic onboarding (matched candidate)", () => {
     expect(body.response).toMatch(/calendar invite/i);
     expect(body.response).toMatch(/branding/i);
     expect(body.response).toMatch(/audit trail|step-by-step|recap/i);
-    expect(hermes.calls).toBe(1); // one parse call; deterministic execution does not call Hermes again
+    // Two LLM calls: one for the parse, one for the LLM-humanized welcome body (Rule 7).
+    // FakeHermes returning "(unused)" causes both to fall back to deterministic templates.
+    expect(hermes.calls).toBeGreaterThanOrEqual(1);
+    expect(hermes.calls).toBeLessThanOrEqual(2);
     const caps = store.getAudit("papaya").map((e) => e.capability);
     expect(caps).toContain("ats.get_contract");
     expect(caps).toContain("hris.upsert_employee");
@@ -166,8 +169,11 @@ describe("/execute — deterministic onboarding (matched candidate)", () => {
   });
 });
 
-describe("/execute — deterministic identity mismatch", () => {
-  it("does not mutate HRIS for a named candidate that is not in ATS, but still shares branding + first-day + Israeli-document guidance", async () => {
+describe("/execute — prompt-supplied candidate not in ATS fixture", () => {
+  it("treats the prompt as authoritative, executes the safe steps, and writes a pre-onboarding Shapes profile (Rule 1 + Rule 2)", async () => {
+    // FakeHermes returns non-JSON, so the parser falls back to regex. Regex extracts the
+    // name from "A new software engineer, Sarah Chen, has just signed…" and routes to
+    // onboarding-match with a synthetic candidate (no fixture for Sarah Chen).
     const hermes = new FakeHermes("(unused)");
     const store = new InMemoryStore();
     seedFixtures(store);
@@ -179,9 +185,7 @@ describe("/execute — deterministic identity mismatch", () => {
         task:
           "A new software engineer, Sarah Chen, has just signed her contract in Comeet for Papaya Global's Tel Aviv office. " +
           "Her start date is Monday, March 18th, 2024. She'll be joining the Platform Engineering team under manager David Goldstein.\n\n" +
-          "Execute the complete onboarding workflow: extract signed-contract details, collect manager information, trigger Shapes HRIS onboarding, " +
-          "add relevant Microsoft Teams channels, send a warm Papaya-branded welcome, share culture videos and Papaya's company story, and prepare to answer questions.\n\n" +
-          "Sarah asks: \"are there any specific documents I need to bring for Israeli employment compliance?\"",
+          "Execute the complete onboarding workflow.",
         context: { tenant: "papaya" },
       },
     });
@@ -191,16 +195,14 @@ describe("/execute — deterministic identity mismatch", () => {
     expect(body.response).toMatch(/Shapes HRIS/);
     expect(body.response).toMatch(/Microsoft Teams/);
     expect(body.response).toMatch(/branding|culture|company story/i);
-    expect(body.response).toMatch(/first[\s-]?day/i);
-    expect(body.response).toMatch(/israel/i);
-    expect(body.response).toMatch(/passport|visa|work authorization/i);
-    expect(body.response).toMatch(/confirm.*(HR|People)/i);
-    // No HRIS write happened.
+    // Under Rule 2 we now write a pre-onboarding Shapes HRIS profile for any named candidate.
     const writes = store
       .getAudit("papaya")
       .filter((e) => e.actor === "pixush" && e.capability === "hris.upsert_employee");
-    expect(writes).toHaveLength(0);
-    expect(hermes.calls).toBe(1); // one parse call; deterministic execution does not call Hermes again
+    expect(writes).toHaveLength(1);
+    // We never refuse on identity-mismatch grounds anymore — the old "contract does not match" text is gone.
+    expect(body.response).not.toMatch(/does not match Sarah Chen/);
+    expect(body.response).not.toMatch(/will not substitute an unrelated candidate/);
   });
 });
 
@@ -231,7 +233,7 @@ describe("/execute — deterministic missing-info", () => {
     expect(hermes.calls).toBe(1); // one parse call; deterministic execution does not call Hermes again
   });
 
-  it("escalates on relative start dates without writing to HRIS", async () => {
+  it("creates a pre-onboarding profile + lists 'absolute start date' as blocked when only a relative date is supplied (Rule 2)", async () => {
     const hermes = new FakeHermes("(unused)");
     const store = new InMemoryStore();
     seedFixtures(store);
@@ -245,13 +247,19 @@ describe("/execute — deterministic missing-info", () => {
       },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().response).toMatch(/relative|ambiguous/i);
-    expect(res.json().response).toMatch(/absolute/i);
-    expect(hermes.calls).toBe(1); // one parse call; deterministic execution does not call Hermes again
+    const body = res.json().response;
+    // The pre-onboarding Shapes profile is written; final activation + calendar invite are blocked.
+    expect(body).toMatch(/pre-onboarding|pending final activation/i);
+    expect(body).toMatch(/absolute start date/i);
+    expect(body).toMatch(/Blocked pending approval/i);
+    // We never silently fabricate a date.
+    expect(body).not.toMatch(/2026-07-01/);
+    expect(body).not.toMatch(/2026-06-28/);
+    // HRIS write DID happen — as pre-onboarding.
     const writes = store
       .getAudit("papaya")
       .filter((e) => e.actor === "pixush" && e.capability === "hris.upsert_employee");
-    expect(writes).toHaveLength(0);
+    expect(writes).toHaveLength(1);
   });
 });
 
@@ -361,7 +369,9 @@ describe("runExecute (no-op tracing path)", () => {
   it("for a general prompt: returns the Hermes content via the no-op tracing path", async () => {
     const hermes = new FakeHermes("Hello from Hermes!");
     const reply = await runExecute({ task: "Tell me a one-line joke.", context: { tenant: "acme" } }, hermes, new InMemoryStore());
-    expect(reply.response).toBe("Hello from the assistant!");
+    expect(reply.response).toContain("Hello from the assistant!");
+    // Rule 4 — general assistant appends a "no side effects" footer when audit.actions is empty
+    expect(reply.response).toMatch(/no Shapes HRIS \/ Microsoft Teams/);
     expect(reply.tenant).toBe("acme");
     expect(typeof reply.requestId).toBe("string");
     expect(reply.user.channel).toBe("sensei");

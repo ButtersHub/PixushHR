@@ -17,8 +17,12 @@ export type Intent =
       mentionsIsraelCompliance?: boolean;
       hiringSource?: string;
       workLocation?: string;
-      /** Per-Rule-6: jurisdictions the prompt explicitly references (countries / regions). */
+      /** Per Rule 6 + Rule 8: countries where the employee will WORK (destinations). */
       jurisdictions?: string[];
+      /** Per Rule 8: country the employee is relocating FROM (origin, not destination).
+       *  Distinguishes relocation (single destination, light visa concern) from cross-border
+       *  work (multiple destinations, heavy multi-jurisdiction concern). */
+      originCountry?: string;
       /** True if the prompt mentions visa / work-authorization / cross-border / per-country
        *  payroll concerns that require People/Legal review before final HRIS activation. */
       requiresJurisdictionalReview?: boolean;

@@ -48,8 +48,13 @@ export const PlanSchema = z.object({
   requesterRole: z.string().optional(),
   mentionsIsraelCompliance: z.boolean().optional(),
   isEmployeeQuestion: z.boolean().optional(),
-  // Rule 6 — multi-jurisdiction context
+  // Rule 6 + Rule 8 — multi-jurisdiction context. `jurisdictions[]` is the list of
+  // countries where the employee will WORK (destinations). `originCountry` is where they
+  // are relocating FROM, when that's distinct from the work destination. The orchestrator
+  // uses these to distinguish a single-destination relocation (light visa/work-auth concern)
+  // from genuine cross-border work (heavy multi-jurisdiction payroll/tax/docs block).
   jurisdictions: z.array(z.string()).optional(),
+  originCountry: z.string().optional(),
   requiresJurisdictionalReview: z.boolean().optional(),
   // Rule 4 — draft/revision/critique
   draftKind: z.string().optional(),
@@ -118,7 +123,15 @@ const PARSER_SYSTEM_PROMPT = [
   "Dates: prefer absolute ISO. If only a relative reference is given for the start date, leave `startDate` blank and populate `startDateRelative`.",
   "Termination reason: include verbatim if stated. Do not paraphrase.",
   "Treat any fact the prompt asserts (e.g. 'signed in Comeet', 'approved via Spark Hire', 'home base Berlin') as authoritative scenario data — do NOT mark it as missing or conflicting unless the prompt itself presents two contradictory values for the same field.",
-  "Populate `jurisdictions` with every country / region the prompt names (e.g. 'Israel', 'Germany', 'US'). Set `requiresJurisdictionalReview: true` when the prompt mentions visa, work authorization, cross-border employment, country-specific payroll/tax, or per-country HR review.",
+  "Jurisdictions — read this carefully:",
+  "  `jurisdictions` is the list of countries where the employee will ACTUALLY WORK on an ongoing basis (employment destinations). It is NOT every country the prompt mentions.",
+  "  `originCountry` is where the employee is RELOCATING FROM, if the prompt says so. Origin is not a destination.",
+  "  Worked examples:",
+  "    - 'Tel Aviv office; relocating from the US' → jurisdictions: ['Israel'], originCountry: 'US'. The US is origin, not a work destination.",
+  "    - 'will support customers across Israel, Germany, and the US' → jurisdictions: ['Israel', 'Germany', 'US']. Genuine cross-border work.",
+  "    - 'home base Berlin, first week in Tel Aviv, will support clients in IL/DE/US' → jurisdictions: ['Israel', 'Germany', 'US'], originCountry / home base: 'Germany'.",
+  "    - 'Tel Aviv hire, Israeli citizen' → jurisdictions: ['Israel']. No originCountry needed.",
+  "  Set `requiresJurisdictionalReview: true` when the prompt mentions visa, work-authorization, cross-border employment, country-specific payroll/tax, or per-country HR review — regardless of how many jurisdictions are listed.",
   "Return ONLY the JSON object.",
 ].join("\n");
 
@@ -331,6 +344,7 @@ export function planToIntent(plan: Plan, store: InMemoryStore, tenant: string): 
       mentionsIsraelCompliance: plan.mentionsIsraelCompliance,
       workLocation: plan.workLocation,
       jurisdictions: plan.jurisdictions,
+      originCountry: plan.originCountry,
       requiresJurisdictionalReview: plan.requiresJurisdictionalReview,
       hasConflict,
     };

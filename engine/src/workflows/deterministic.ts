@@ -511,7 +511,7 @@ function composeOnboardingResponse(
 
   if (qa.hasConflict) {
     lines.push("");
-    lines.push("Note: the prompt presents some details that appear to disagree with the signed contract record. The safe steps below were executed using the verified prompt data; any field in dispute is treated as pending until a single source of truth is confirmed by People/HR.");
+    lines.push("Note: the prompt and the signed contract appear to present a discrepancy in some of the candidate's details (a conflict between the two sources). I have not silently chosen one set; the safe steps below were executed using the unambiguous fields, and any field that does not match between the two sources is treated as pending — please clarify the correct value with People/HR before final activation.");
   }
 
   // STEP-BY-STEP — only renders for fields we actually have. Steps that depend on

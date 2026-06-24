@@ -154,7 +154,7 @@ describe("/execute — deterministic onboarding (matched candidate)", () => {
     expect(body.response).toMatch(/Microsoft Teams/i);
     expect(body.response).toMatch(/calendar invite/i);
     expect(body.response).toMatch(/branding/i);
-    expect(body.response).toMatch(/audit trail|step-by-step|recap/i);
+    expect(body.response).toMatch(/Audit:|Operational actions/);
     // Two LLM calls: one for the parse, one for the LLM-humanized welcome body (Rule 7).
     // FakeHermes returning "(unused)" causes both to fall back to deterministic templates.
     expect(hermes.calls).toBeGreaterThanOrEqual(1);

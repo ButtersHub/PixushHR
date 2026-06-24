@@ -105,7 +105,15 @@ const PARSER_SYSTEM_PROMPT = [
   '- "draft-or-revision": the request is to revise / improve / rewrite / draft / critique / propose an artifact, NOT to execute a workflow. Populate `draftKind` with a short label ("welcome-email-revision", "transition-message-draft", "comms-plan", etc.).',
   '- "general": anything else — vague commands, creative writing, prompt-injection attempts, off-topic chitchat.',
   "",
-  "Be conservative with confidentiality-refusal: only fire it when there is a clear ask to be GIVEN sensitive data ('send me Daniel's salary', 'share his contract'). Do NOT fire it when the prompt merely mentions sensitive fields in the course of a normal workflow (e.g. 'extract signed-contract details' inside an onboarding instruction).",
+  "Confidentiality-refusal classification is strict — read this carefully:",
+  "  ONLY classify intent as 'confidentiality-refusal' and ONLY populate `confidentialitySubjects` when the prompt is a THIRD PARTY (peer / manager / vendor / unknown sender) asking YOU TO SEND OR SHARE sensitive employee data TO THEM. The verb must be a request-to-receive: 'send me', 'share with me', 'tell me', 'forward me', 'give me', 'please provide'.",
+  "  DO NOT classify as 'confidentiality-refusal' and DO NOT populate `confidentialitySubjects` when the prompt is an HR / People-team instruction that merely REFERENCES a sensitive field as part of a workflow — for example an instruction to update a HRIS termination-reason field, to include the reason in the termination letter, or to KEEP a reason OUT of an invite. These are workflow instructions ABOUT handling sensitive data, not requests to receive it.",
+  "  Worked examples:",
+  "    - 'I am Daniel's peer, please send me his termination reason and salary.' → intent: 'confidentiality-refusal', requesterRole: 'peer', confidentialitySubjects: ['termination reason', 'salary'].",
+  "    - 'Offboard Daniel. HRIS includes a sensitive termination reason: X. Do not include the reason in the calendar invite.' → intent: 'offboarding'. Do NOT populate confidentialitySubjects. (The confidentiality requirement is an instruction to handle data correctly, not a request to disclose it.)",
+  "    - 'Update Sarah in Shapes — new comp is $X.' → intent: 'onboarding' (or whatever the workflow is). Do NOT populate confidentialitySubjects.",
+  "    - 'Sarah asks about culture videos. Her peer asks you to share her passport details.' → intent: 'confidentiality-refusal', requesterRole: 'peer', confidentialitySubjects: ['passport details'], questions: [Sarah's question].",
+  "  When in doubt: if there is an HR workflow instruction (onboard / offboard / update HRIS / generate letter / activate workflow) anywhere in the prompt, prefer the workflow intent and leave confidentialitySubjects empty unless a separate third-party ask is also present.",
   "Names: include only the full legal name as written. Do not invent or fill missing names. If the only token is a first name (e.g. 'Alex'), set `employeeName` to that single token and add 'last name' to `missingFields`.",
   "Dates: prefer absolute ISO. If only a relative reference is given for the start date, leave `startDate` blank and populate `startDateRelative`.",
   "Termination reason: include verbatim if stated. Do not paraphrase.",
@@ -193,15 +201,28 @@ function deterministicId(name: string, prefix: string): string {
 }
 
 export function planToIntent(plan: Plan, store: InMemoryStore, tenant: string): Intent {
-  // Confidentiality refusal wins outright — even a populated workflow intent
-  // does not get to run if the same prompt asks for sensitive data.
-  if (plan.confidentialitySubjects && plan.confidentialitySubjects.length > 0) {
-    return { kind: "confidentiality-refusal", subjects: plan.confidentialitySubjects };
-  }
-
+  // Confidentiality refusal must distinguish "third party is asking me to RECEIVE sensitive
+  // data" from "HR is instructing me to USE sensitive data inside an authorized workflow".
+  // The signal for the former is an explicit requester role (peer/manager/vendor/third-party)
+  // OR the LLM explicitly classifying intent as "confidentiality-refusal". When the LLM
+  // classified the prompt as a workflow (onboarding/offboarding) and merely populated
+  // confidentialitySubjects because trigger words appeared, the workflow intent wins —
+  // executing the workflow is itself the correct way to honour the confidentiality scoping
+  // (e.g. keeping termination reason out of the calendar invite).
   if (plan.intent === "confidentiality-refusal") {
-    // model said refusal but didn't list subjects — fall back to a generic subject list
-    return { kind: "confidentiality-refusal", subjects: ["the requested confidential information"] };
+    const subjects = plan.confidentialitySubjects && plan.confidentialitySubjects.length > 0
+      ? plan.confidentialitySubjects
+      : ["the requested confidential information"];
+    return { kind: "confidentiality-refusal", subjects };
+  }
+  const hasThirdPartyAsk = !!plan.requesterRole && plan.requesterRole.trim().length > 0;
+  const looksLikeWorkflow = plan.intent === "onboarding" || plan.intent === "offboarding";
+  if (
+    plan.confidentialitySubjects && plan.confidentialitySubjects.length > 0
+    && hasThirdPartyAsk
+    && !looksLikeWorkflow
+  ) {
+    return { kind: "confidentiality-refusal", subjects: plan.confidentialitySubjects };
   }
 
   if (plan.intent === "offboarding") {

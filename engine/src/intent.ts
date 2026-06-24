@@ -36,6 +36,7 @@ export type Intent =
   | { kind: "offboarding-missing-info"; reasons: string[] }
   | { kind: "offboarding-employee-question"; employeeName?: string }
   | { kind: "draft-or-revision"; instruction: string }
+  | { kind: "strategic-planning"; instruction: string }
   | { kind: "general" };
 
 export interface ParsedTermination {

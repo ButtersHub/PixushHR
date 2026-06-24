@@ -1308,6 +1308,96 @@ export async function runDraftOrRevision(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Strategic planning branch — Rule 18
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Triggered when the prompt asks for STRATEGIC ADVICE / PLANNING / REASONING
+// (mass acquisition, restructure, layoffs, country expansion, "how would you /
+// what are the risks / how would you prioritize"). Produces a substantive
+// structured response — no HRIS/Teams writes, no per-employee workflow execution.
+
+export async function runStrategicPlanning(
+  store: InMemoryStore,
+  hermes: HermesClient | undefined,
+  opts: BaseOpts & { instruction?: string },
+): Promise<AgentReply> {
+  const { tenant, runId, task, source } = opts;
+  startedAuditEntry(store, tenant, runId, source, task, "strategic-planning");
+  store.pushActiveRun(tenant, runId);
+  try {
+    let body: string;
+    if (hermes) {
+      const systemPrompt = [
+        "You are Pixush, Papaya's HR operations assistant, responding to a STRATEGIC PLANNING or ADVISORY request from HR leadership.",
+        "",
+        "WHAT THE USER IS ASKING FOR:",
+        "This is NOT a per-employee onboarding/offboarding execution. The user wants a substantive structured response: workflow modifications, risk analysis, prioritization, stakeholder coordination, timeline, cultural / compliance considerations, etc. — applied to the specific scenario in the prompt.",
+        "",
+        "REQUIRED OUTPUT SHAPE:",
+        "- Address EACH numbered or bulleted strategic question in the prompt explicitly, in its own short section with a header.",
+        "- For workflow-modification questions: propose specific changes (e.g. batch-trigger mode, parallel ATS imports, mass-data-loaders, consolidated welcome cadence, single transition message instead of per-hire) with rationale.",
+        "- For risk questions: enumerate the risk categories the scenario raises (compliance / legal, payroll / tax, data migration / HRIS-to-HRIS, equity / stock conversion, cultural integration, communication, change management) and name the owner / mitigation for each.",
+        "- For prioritization questions: propose a STAGED approach with phase boundaries, rationale for the sequencing, and explicit criteria for who goes in which phase.",
+        "- For stakeholder questions: name them by role (legal counsel, country payroll lead, IT, security, finance, internal communications, HRBPs, executive sponsor, acquired-company leadership, etc.) and what each one owns.",
+        "- For cultural questions: give specific concrete tactics (founder Q&A, leadership listening sessions, retention conversations, named-buddy program, opt-in office-hours channel, branded onboarding path that preserves named startup rituals where possible).",
+        "- For timeline questions: lay out the phases between the dates the prompt names (e.g. Mar 1 → Mar 15) with milestones per week / phase.",
+        "",
+        "GROUND RULES:",
+        "- Use ONLY facts from the prompt + widely-known general HR / payroll knowledge. Do NOT invent Papaya-specific internal policies, salaries, named contacts, or country-specific legal certainty.",
+        "- For country-specific legal items (e.g. German co-determination consultation periods, mass-transfer notice rules), describe them at a category level + defer the exact statutory specifics to legal counsel. Do NOT cite specific statutes by name.",
+        "- Do NOT include any URLs or hyperlinks.",
+        "- Be SUBSTANTIVE. Do not just say 'consult HR'. Give the substance, name the owner, name the tradeoff.",
+        "- This is a plan / analysis — present tense for what the recommended approach IS, not 'I executed' claims.",
+        "",
+        "RESPONSE LENGTH:",
+        "- Long enough to substantively cover each strategic question. Each section 3-8 sentences or bullets. Total length: as long as needed to be useful, but no boilerplate.",
+      ].join("\n");
+      try {
+        const res = await hermes.chat([
+          { role: "system", content: systemPrompt },
+          { role: "user", content: task },
+        ]);
+        body = (res.content ?? "").trim();
+        if (!body || body.length < 100) body = composeStrategicFallback(task);
+      } catch {
+        body = composeStrategicFallback(task);
+      }
+    } else {
+      body = composeStrategicFallback(task);
+    }
+
+    // No appendix — the strategic response is the deliverable. A single trailing line
+    // notes the consultative posture (no side effects).
+    const footer = "\n\nNote: this is a strategic recommendation. No per-employee Shapes HRIS / Microsoft Teams / calendar / email side effects were taken — implementing this plan happens through the normal onboarding / offboarding execution paths for each affected employee.";
+    const response = body + footer;
+    return {
+      requestId: runId,
+      tenant,
+      user: { id: "unknown", name: "Employee", role: "employee", channel: "sensei" as const },
+      response,
+      actions: collectActions(store, tenant, runId),
+    };
+  } finally {
+    store.popActiveRun(tenant, runId);
+  }
+}
+
+function composeStrategicFallback(task: string): string {
+  return [
+    "Recommended approach (deterministic fallback)",
+    "---------------------------------------------",
+    "Workflow modifications: switch Papaya's per-hire onboarding into a batch-trigger mode for the affected population, with parallel ATS imports, a consolidated welcome cadence, and a single transition message in place of per-hire emails where appropriate.",
+    "Risk categories: compliance / legal (per-jurisdiction employment law, consultation periods, data transfers), payroll / tax (cutover timing, year-to-date reconciliation), data migration (prior HRIS to Shapes), equity / stock conversion (if applicable), cultural integration, internal communications. Owner per category should be named on the project plan; do not assert specific statutory requirements — defer to legal counsel.",
+    "Prioritization: a staged approach segmented by jurisdiction + role criticality is preferable to a single big-bang. Phase 1 — sensitive / regulated cases (visa, work-auth, country-specific consultation). Phase 2 — bulk of standard employees. Phase 3 — anything that hit blockers in phases 1/2.",
+    "Stakeholders to coordinate: legal counsel, country payroll lead, IT / security, finance, internal communications, HRBPs, executive sponsor, and acquired-company leadership.",
+    "Cultural concerns: explicit founder / leadership Q&A sessions, named-buddy program, opt-in office-hours channel, and a 'what changes / what stays' guide to acknowledge the startup-to-Papaya transition.",
+    "Timeline: lay out weekly milestones between the dates in the prompt, with go/no-go check-ins at the end of each week.",
+    "",
+    `Source prompt (for reference): ${task.slice(0, 300)}${task.length > 300 ? "…" : ""}`,
+  ].join("\n");
+}
+
 function composeDraftFallback(task: string): string {
   return [
     "Improved employee-facing message",

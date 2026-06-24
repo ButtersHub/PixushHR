@@ -22,6 +22,7 @@ import {
   runOffboardingEmployeeQuestion,
   runOffboardingMissingInfo,
   runOnboardingMissingInfo,
+  runStrategicPlanning,
 } from "./workflows/deterministic.js";
 
 // Process-wide plan cache. Keyed by tenant + task hash; entries expire after 10 min so a
@@ -317,6 +318,14 @@ export async function runExecute(
             });
           case "draft-or-revision":
             return runDraftOrRevision(store, hermes, {
+              tenant,
+              task: req.task,
+              source,
+              runId: requestId,
+              instruction: intent.instruction,
+            });
+          case "strategic-planning":
+            return runStrategicPlanning(store, hermes, {
               tenant,
               task: req.task,
               source,

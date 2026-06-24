@@ -24,6 +24,7 @@ export const PlanSchema = z.object({
     "employee-question",
     "confidentiality-refusal",
     "draft-or-revision",
+    "strategic-planning",
     "general",
   ]),
   employeeName: z.string().optional(),
@@ -108,6 +109,12 @@ const PARSER_SYSTEM_PROMPT = [
   '- "employee-question": the request body is primarily a question from an employee about onboarding/offboarding logistics, culture, or process — NOT an HR mutation. Set `isEmployeeQuestion: true`.',
   '- "confidentiality-refusal": a third party (peer, manager, vendor) is asking the agent to disclose sensitive employee data. Populate `confidentialitySubjects` and `requesterRole`. If the same prompt also contains an unrelated employee question (e.g. "Sarah asks ... ALSO a peer asks for her salary"), keep intent="confidentiality-refusal" and put the employee question in `questions`.',
   '- "draft-or-revision": the request is to revise / improve / rewrite / draft / critique / propose an artifact, NOT to execute a workflow. Populate `draftKind` with a short label ("welcome-email-revision", "transition-message-draft", "comms-plan", etc.).',
+  '- "strategic-planning": the request is for STRATEGIC ADVICE / PLANNING / REASONING rather than a per-employee workflow execution. Signals: numbered "Strategic questions" or "How would you…" framing; mass / multi-employee scenarios (acquisitions, restructures, layoffs, mass transfers, RIFs, mergers, divestitures, country expansions); asks for risk analysis, prioritization, staged approaches, timeline, stakeholder maps, or workflow modifications; no single named employee to onboard/offboard. The output is REASONING + STRUCTURED RECOMMENDATIONS, not HRIS writes.',
+  '  Examples:',
+  '    - "Papaya acquired a 50-person startup. How would you modify the onboarding workflow? What are the risks? How would you prioritize?" → intent: "strategic-planning".',
+  '    - "Compare an all-at-once vs staged onboarding approach for our 200-person EMEA expansion." → intent: "strategic-planning".',
+  '    - "We have a 30-person layoff next quarter. Propose a respectful offboarding plan." → intent: "strategic-planning".',
+  '    - "Onboard Sarah Chen, signed contract, start March 18." → intent: "onboarding" (single named employee, execution).',
   '- "general": anything else — vague commands, creative writing, prompt-injection attempts, off-topic chitchat.',
   "",
   "Confidentiality-refusal classification is strict — read this carefully:",
@@ -289,6 +296,10 @@ export function planToIntent(plan: Plan, store: InMemoryStore, tenant: string): 
 
   if (plan.intent === "draft-or-revision") {
     return { kind: "draft-or-revision", instruction: plan.notes ?? plan.draftKind ?? "Produce the requested draft or revision." };
+  }
+
+  if (plan.intent === "strategic-planning") {
+    return { kind: "strategic-planning", instruction: plan.notes ?? "Produce a structured strategic response." };
   }
 
   if (plan.intent === "onboarding") {

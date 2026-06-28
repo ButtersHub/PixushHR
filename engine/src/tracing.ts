@@ -7,7 +7,7 @@
  */
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { LangfuseSpanProcessor } from "@langfuse/otel";
-import { propagateAttributes, startObservation } from "@langfuse/tracing";
+import { propagateAttributes, startActiveObservation, startObservation } from "@langfuse/tracing";
 import type { LangfuseGeneration } from "@langfuse/tracing";
 import type { PropagateAttributesParams } from "@langfuse/tracing";
 import type { SpanContext } from "@opentelemetry/api";
@@ -164,4 +164,94 @@ export async function traceToolCall<T>(
   } finally {
     tool.end();
   }
+}
+
+/**
+ * Wrap fn in a Langfuse span that is the active OTel context for the duration of fn.
+ * Child observations created inside fn naturally nest under this span without needing
+ * an explicit parent. No-ops cleanly when tracing is disabled.
+ */
+export async function withActiveSpan<T>(
+  name: string,
+  attrs: { metadata?: Record<string, unknown>; input?: unknown },
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!keysPresent) return fn();
+  return startActiveObservation(
+    name,
+    async (span) => {
+      span.update({
+        input: attrs.input !== undefined ? sanitizeTraceValue(attrs.input) : undefined,
+        metadata: attrs.metadata,
+      });
+      try {
+        return await fn();
+      } catch (error) {
+        span.update({ level: "ERROR", statusMessage: (error as Error).message });
+        throw error;
+      }
+    },
+    { asType: "span" },
+  ) as Promise<T>;
+}
+
+/**
+ * Inline tool observation that inherits the current OTel context. Use inside an
+ * active span (e.g. withActiveSpan) so each tool call appears as a child observation
+ * in the same trace. Differs from traceToolCall, which requires an explicit
+ * registered parent (used by the HTTP /tools/execute path).
+ */
+export async function runTracedTool<T>(
+  attrs: { name: string; input: unknown; runId?: string; tenant?: string },
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!keysPresent) return fn();
+  const startedAt = Date.now();
+  const tool = startObservation(
+    attrs.name,
+    {
+      input: sanitizeTraceValue(attrs.input),
+      metadata: { runId: attrs.runId, tenant: attrs.tenant },
+    },
+    { asType: "tool" },
+  );
+  try {
+    const result = await fn();
+    tool.update({
+      output: sanitizeTraceValue(result),
+      metadata: { runId: attrs.runId, tenant: attrs.tenant, durationMs: Date.now() - startedAt },
+    });
+    return result;
+  } catch (error) {
+    tool.update({
+      level: "ERROR",
+      statusMessage: (error as Error).message,
+      output: { ok: false, error: (error as Error).message },
+      metadata: { runId: attrs.runId, tenant: attrs.tenant, durationMs: Date.now() - startedAt },
+    });
+    throw error;
+  } finally {
+    tool.end();
+  }
+}
+
+/**
+ * Emit a short event-style observation in the current OTel context. Used for
+ * markers like "intent-cache-hit" or "intent-regex-fallback" where there's no
+ * meaningful duration to track but we want a visible node in the trace.
+ */
+export function emitTraceEvent(
+  name: string,
+  attrs: { metadata?: Record<string, unknown>; input?: unknown; output?: unknown } = {},
+): void {
+  if (!keysPresent) return;
+  startObservation(
+    name,
+    {
+      input: attrs.input !== undefined ? sanitizeTraceValue(attrs.input) : undefined,
+      output: attrs.output !== undefined ? sanitizeTraceValue(attrs.output) : undefined,
+      metadata: attrs.metadata,
+    },
+    { asType: "event" },
+  );
 }

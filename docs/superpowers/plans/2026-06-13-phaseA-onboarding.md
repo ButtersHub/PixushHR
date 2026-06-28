@@ -75,7 +75,7 @@ verify → commit; merge the phase at the end. Verify finally against the deploy
 ## Verify Phase A
 - Local: `engine` tests + dashboard e2e green; `docker compose up` and run an onboarding `/execute`
   → multi-tool trace in Langfuse + Messages + Audit populated.
-- Deployed: same `/execute` against `http://18.215.146.5:3000` with real Hermes.
+- Deployed: same `/execute` against `http://63.179.243.220:3000` with real Hermes.
 
 **Deferred to Phase B:** the manager-else-peer-else-escalate condition, offboarding, the
 confidentiality gate. Keep Phase A linear + happy-path.

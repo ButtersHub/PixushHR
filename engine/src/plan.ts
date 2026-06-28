@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { HermesClient } from "./hermes.js";
 import type { InMemoryStore, Contract } from "./store.js";
 import { classifyIntent, type Intent } from "./intent.js";
+import { emitTraceEvent, startGeneration } from "./tracing.js";
 
 /** Sentinel string the orchestrator embeds in the parser system prompt. StubHermes (used by
  *  unit tests + the no-creds smoke compose stack) detects it and returns a JSON plan instead
@@ -183,14 +184,25 @@ export async function parsePlanLLM(
     { role: "user" as const, content: task },
   ];
   const start = Date.now();
+  const gen = startGeneration("intent-parser", { input: messages });
   let raw = "";
   try {
     const res = await hermes.chat(messages);
     raw = res.content ?? "";
     const obj = extractJsonObject(raw);
     const plan = PlanSchema.parse(obj);
+    gen?.update({
+      output: plan,
+      model: res.model,
+      usageDetails: { input: res.usage?.input, output: res.usage?.output },
+    });
     return { plan, source: "llm", llmDurationMs: Date.now() - start, rawLlmContent: raw };
   } catch (err) {
+    gen?.update({
+      level: "ERROR",
+      statusMessage: (err as Error).message,
+      output: raw ? { rawLlmContent: raw, error: (err as Error).message } : { error: (err as Error).message },
+    });
     return {
       plan: { intent: "general" }, // sentinel; orchestrator will use the regex fallback below
       source: "regex-fallback",
@@ -198,6 +210,8 @@ export async function parsePlanLLM(
       rawLlmContent: raw,
       fallbackReason: (err as Error).message,
     };
+  } finally {
+    gen?.end();
   }
 }
 
@@ -391,6 +405,9 @@ export async function resolveIntent(opts: ResolveIntentOpts): Promise<ResolveInt
   if (cache) {
     const cached = cache.get(key);
     if (cached) {
+      emitTraceEvent("intent-cache-hit", {
+        metadata: { tenant, intent: cached.intent, reason: "PlanCache hit — no LLM call made" },
+      });
       return { intent: planToIntent(cached, store, tenant), plan: cached, source: "cache" };
     }
   }
@@ -408,6 +425,14 @@ export async function resolveIntent(opts: ResolveIntentOpts): Promise<ResolveInt
 
   // Regex fallback — never lets a missing/malformed LLM response stall the path.
   const intent = classifyIntent({ task, tenant, scenarioId, store });
+  emitTraceEvent("intent-regex-fallback", {
+    metadata: {
+      tenant,
+      intent: intent.kind,
+      fallbackReason: llm.fallbackReason ?? "unknown",
+      llmDurationMs: llm.llmDurationMs,
+    },
+  });
   return {
     intent,
     source: "regex-fallback",

@@ -5,6 +5,7 @@ import {
   clearToolTraceParent,
   registerToolTraceParent,
   startGeneration,
+  withActiveSpan,
   withTrace,
 } from "./tracing.js";
 import { onboardingWorkflow } from "./workflows/onboarding.js";
@@ -264,6 +265,24 @@ export async function runExecute(
   // popActiveRun matches by (tenant,runId) so the nested push/pop is safe.
   const requestId = randomUUID();
   store.pushActiveRun(tenant, requestId);
+
+  // Wrap the entire request in a single "execute" trace so the intent-parser generation,
+  // cache/fallback events, deterministic tool calls, and final branch span all nest under
+  // one trace in Langfuse. Mirrors the Workflow Test path's runWorkflow tracing.
+  return withActiveSpan(
+    "execute",
+    { metadata: { requestId, tenant, source, scenarioId }, input: { task: req.task } },
+    async () => runExecuteBody(req, hermes, store, { tenant, source, scenarioId, requestId }),
+  );
+}
+
+async function runExecuteBody(
+  req: ExecuteRequest,
+  hermes: HermesClient,
+  store: InMemoryStore,
+  ctx: { tenant: string; source: string; scenarioId?: string; requestId: string },
+): Promise<AgentReply> {
+  const { tenant, source, scenarioId, requestId } = ctx;
   let resolved: ResolveIntentResult;
   try {
     try {
@@ -281,11 +300,10 @@ export async function runExecute(
   const intent = resolved.intent;
 
   if (intent.kind !== "general") {
-    return await withTrace(
+    return await withActiveSpan(
+      routeTraceName(intent.kind),
       {
-        traceName: routeTraceName(intent.kind),
-        metadata: { requestId, tenant, intent: intent.kind },
-        tags: [`tenant:${tenant}`, `feature:${intent.kind}`],
+        metadata: { requestId, tenant, intent: intent.kind, planSource: resolved.source },
       },
       async () => {
         switch (intent.kind) {
@@ -370,12 +388,9 @@ export async function runExecute(
   }
 
   // General assistant fallback — single Hermes call with no playbook + no tools intent.
-  return withTrace(
-    {
-      traceName: `general-execute`,
-      metadata: { requestId, tenant },
-      tags: [`tenant:${tenant}`, `feature:general`],
-    },
+  return withActiveSpan(
+    `general-execute`,
+    { metadata: { requestId, tenant, planSource: resolved.source } },
     async () => {
       const messages = [
         { role: "system" as const, content: GENERAL_ASSISTANT_PROMPT },

@@ -24,7 +24,7 @@ typecheck + build clean.
 
 **Remaining deferrals (unchanged, none blocking the demo):** real prod adapters, DynamoDB/S3,
 Users/Synthetic-data screens, real-Hermes deployed verification (run `/execute` against
-`http://18.215.146.5:3000` with real Hermes after `docker compose up -d --build` + one-time
+`http://63.179.243.220:3000` with real Hermes after `docker compose up -d --build` + one-time
 Hermes model login; confirm multi-tool Langfuse trace + populated Messages/Audit).
 
 ## What's built & working
@@ -86,9 +86,9 @@ reference/   third-party clones (sensei, hermes-agent, langfuse-skills) — giti
 ```
 
 ## Deployment status — AWS EC2 — LIVE ✅ (verified end-to-end with real Hermes)
-- **Instance:** EC2 t3.medium, Ubuntu, **public IP `18.215.146.5`**. Security group opens 22, 3000, 8080.
+- **Instance:** EC2 t3.medium, Ubuntu, **public IP `63.179.243.220`**. Security group opens 22, 3000, 8080.
 - **Containers (all Up):** engine `:3000`, agent(Hermes) `:8642`, dashboard `:8080`.
-- **Config on the box** (git-ignored `.env`, NOT committed): `VITE_ENGINE_URL=http://18.215.146.5:3000`
+- **Config on the box** (git-ignored `.env`, NOT committed): `VITE_ENGINE_URL=http://63.179.243.220:3000`
   + Langfuse keys; `agent/.env` from the example (API_SERVER_KEY matches engine's HERMES_API_KEY).
 - **Done:** Hermes model configured (OpenAI Codex, persisted in `hermes-data` volume); `/execute`
   + `/audit` verified working on the public endpoint; Langfuse keys rotated (after rotating, the
@@ -112,8 +112,8 @@ reference/   third-party clones (sensei, hermes-agent, langfuse-skills) — giti
   and keep `platform_toolsets.whatsapp: [hermes-whatsapp]` so the `send_message` tool is
   available for WhatsApp-to-email requests. Add a SOUL.md instruction that explicit email requests
   should call `send_message` with target `email:<address>`.
-- **Remaining:** point **Sensei/Agentalent** at `http://18.215.146.5:3000/execute` (health
-  `/health`); open the dashboard at `http://18.215.146.5:8080`.
+- **Remaining:** point **Sensei/Agentalent** at `http://63.179.243.220:3000/execute` (health
+  `/health`); open the dashboard at `http://63.179.243.220:8080`.
 - **Ops:** update via `git pull && docker compose up -d --build` (re-set `VITE_ENGINE_URL` if the
   IP changes — it's baked into the dashboard at build time).
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const DEFAULT_AGENT_URL = "http://18.215.146.5:3000/execute";
+const DEFAULT_AGENT_URL = "http://63.179.243.220:3000/execute";
 const DEFAULT_TENANT = "papaya";
 const DEFAULT_MAX_TASKS = 10;
 

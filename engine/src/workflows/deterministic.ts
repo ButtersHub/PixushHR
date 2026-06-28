@@ -1,10 +1,27 @@
 import { randomUUID } from "node:crypto";
 import type { InMemoryStore } from "../store.js";
 import type { AgentReply } from "../models.js";
-import { executeTool } from "../tools.js";
+import { executeTool, type ToolResult } from "../tools.js";
 import type { Contract } from "../store.js";
 import type { ParsedTermination } from "../intent.js";
 import type { HermesClient } from "../hermes.js";
+import { runTracedTool } from "../tracing.js";
+
+/** executeTool wrapper that also emits a Langfuse tool observation under the active
+ *  trace span. Used by the deterministic branches so onboarding/offboarding scenario
+ *  runs surface each business action in the same trace as the intent-parser call. */
+function tracedExecuteTool(
+  store: InMemoryStore,
+  name: string,
+  args: unknown,
+  opts: { runId: string; actor: "pixush" },
+): Promise<ToolResult> {
+  const tenant = ((args as { tenant?: string })?.tenant) ?? "papaya";
+  return runTracedTool(
+    { name, input: args, runId: opts.runId, tenant },
+    () => executeTool(store, name, args, opts),
+  );
+}
 
 interface BaseOpts {
   tenant: string;
@@ -160,7 +177,7 @@ export async function runDeterministicOnboarding(
     let extractedContract: Contract | undefined;
     if (haveName) {
       const contractRes = (await safeRun("ats.get_contract", () =>
-        executeTool(store, "ats.get_contract", { tenant, candidateId: candidate.candidateId }, { runId, actor: "pixush" }),
+        tracedExecuteTool(store, "ats.get_contract", { tenant, candidateId: candidate.candidateId }, { runId, actor: "pixush" }),
       )) as { contract?: Contract };
       extractedContract = contractRes.contract ?? candidate;
     }
@@ -170,7 +187,7 @@ export async function runDeterministicOnboarding(
     if (haveManager) {
       managerQuestion = `Please confirm buddy assignment, first-week plan, equipment needs, and team-specific channels for ${candidate.name}.`;
       const managerRes = (await safeRun("hiring_manager.ask", () =>
-        executeTool(
+        tracedExecuteTool(
           store,
           "hiring_manager.ask",
           { tenant, managerId: candidate.managerId, question: managerQuestion },
@@ -192,7 +209,7 @@ export async function runDeterministicOnboarding(
     const employeeId = candidate.candidateId === "c1" ? "e1" : `emp-${candidate.candidateId}`;
     const hrisStatus = haveStart ? "active" : "pre-onboarding";
     await safeRun("hris.upsert_employee", () =>
-      executeTool(
+      tracedExecuteTool(
         store,
         "hris.upsert_employee",
         {
@@ -226,7 +243,7 @@ export async function runDeterministicOnboarding(
     // to safe onboarding channels when neither is supplied.
     const teamsList = uniqueStrings([haveDept ? candidate.department : null, "Onboarding", "All Hands"]);
     await safeRun("teams.add_member", () =>
-      executeTool(
+      tracedExecuteTool(
         store,
         "teams.add_member",
         { tenant, employeeId, teams: teamsList },
@@ -238,7 +255,7 @@ export async function runDeterministicOnboarding(
     let inviteId: string | undefined;
     if (haveStart) {
       const inviteRes = (await safeRun("calendar.create_invite", () =>
-        executeTool(
+        tracedExecuteTool(
           store,
           "calendar.create_invite",
           {
@@ -261,7 +278,7 @@ export async function runDeterministicOnboarding(
     }
 
     const brandingRes = (await safeRun("content.get_branding", () =>
-      executeTool(store, "content.get_branding", { tenant }, { runId, actor: "pixush" }),
+      tracedExecuteTool(store, "content.get_branding", { tenant }, { runId, actor: "pixush" }),
     )) as { branding?: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string } };
     const branding = brandingRes.branding;
 
@@ -287,7 +304,7 @@ export async function runDeterministicOnboarding(
     let messageId: string | undefined;
     if (haveName) {
       const sendRes = (await safeRun("channel.send_message", () =>
-        executeTool(
+        tracedExecuteTool(
           store,
           "channel.send_message",
           { tenant, to: candidate.name, role: "employee", channel: "email", body: welcomeBody },
@@ -822,7 +839,7 @@ export async function runDeterministicOffboarding(
 
     // 1. Update Shapes HRIS with the termination fields — reason is allowed here.
     await safeRun("hris.upsert_employee", () =>
-      executeTool(
+      tracedExecuteTool(
         store,
         "hris.upsert_employee",
         {
@@ -844,7 +861,7 @@ export async function runDeterministicOffboarding(
     const employeeRecipient = parsed.email ?? parsed.name;
     const employeeBody = composeOffboardingEmployeeEmail(parsed, lastWorkingDay);
     await safeRun("channel.send_message", () =>
-      executeTool(
+      tracedExecuteTool(
         store,
         "channel.send_message",
         {
@@ -861,7 +878,7 @@ export async function runDeterministicOffboarding(
     // 3. Personalized termination letter — reason is allowed here.
     const letterBody = composeTerminationLetter(parsed, lastWorkingDay, reason);
     await safeRun("document.generate_termination_letter", () =>
-      executeTool(
+      tracedExecuteTool(
         store,
         "document.generate_termination_letter",
         {
@@ -878,7 +895,7 @@ export async function runDeterministicOffboarding(
 
     // 4. Calendar invite — LOGISTICS ONLY. The reason is deliberately omitted.
     await safeRun("calendar.create_invite", () =>
-      executeTool(
+      tracedExecuteTool(
         store,
         "calendar.create_invite",
         {
@@ -894,7 +911,7 @@ export async function runDeterministicOffboarding(
 
     // 5. Activate offboarding workflow in Shapes for stakeholders.
     await safeRun("workflow.activate_offboarding", () =>
-      executeTool(
+      tracedExecuteTool(
         store,
         "workflow.activate_offboarding",
         {
@@ -1159,7 +1176,7 @@ export async function runConfidentialityRefusal(
     let brandingShared: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string } | undefined;
     if (includesEmployeeQuestion) {
       const brandingRes = (await safeRun("content.get_branding", () =>
-        executeTool(store, "content.get_branding", { tenant }, { runId, actor: "pixush" }),
+        tracedExecuteTool(store, "content.get_branding", { tenant }, { runId, actor: "pixush" }),
       )) as { branding?: { companyStory?: string; cultureVideoUrl?: string; welcomeNote?: string } };
       brandingShared = brandingRes.branding;
     }

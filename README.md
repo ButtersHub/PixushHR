@@ -73,7 +73,7 @@ node tools/sensei-handshake.mjs \
 Options:
 ```bash
 node tools/sensei-handshake.mjs <handshake-url> \
-  --agent-url http://18.215.146.5:3000/execute \
+  --agent-url http://63.179.243.220:3000/execute \
   --tenant papaya \
   --max-tasks 5
 ```

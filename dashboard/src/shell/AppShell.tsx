@@ -18,9 +18,14 @@ const ENGINE = import.meta.env.VITE_ENGINE_URL ?? 'http://localhost:3000';
 export function AppShell() {
   const [activeScreen, setActiveScreen] = useState<Screen>('live-run');
   const [triggerKey, setTriggerKey] = useState(0);
+  // Whether the next LiveRunScreen mount should auto-fire /execute. Set true only when
+  // the Trigger button is clicked — Reset force-remounts via triggerKey but must NOT
+  // re-run the scenario (otherwise the wiped audit log + Messages instantly fill back up).
+  const [autoTrigger, setAutoTrigger] = useState(false);
 
   function handleTrigger() {
     setActiveScreen('live-run');
+    setAutoTrigger(true);
     setTriggerKey(k => k + 1);
   }
 
@@ -31,6 +36,7 @@ export function AppShell() {
     } catch {
       /* swallow — UI still refreshes below */
     }
+    setAutoTrigger(false);
     setTriggerKey(k => k + 1); // force-remount the active screen so it refetches
     setActiveScreen('live-run');
   }
@@ -42,7 +48,7 @@ export function AppShell() {
         <LeftNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
         <main className="flex-1 overflow-y-auto p-6">
           {activeScreen === 'live-run' && (
-            <LiveRunScreen key={triggerKey} autoTrigger={triggerKey > 0} />
+            <LiveRunScreen key={triggerKey} autoTrigger={autoTrigger} />
           )}
           {activeScreen === 'messages' && <MessagesScreen />}
           {activeScreen === 'audit-log' && <AuditScreen />}

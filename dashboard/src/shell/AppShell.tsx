@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TopBar } from './TopBar';
 import { LeftNav } from './LeftNav';
 import type { Screen } from './LeftNav';
@@ -23,6 +23,36 @@ export function AppShell() {
   // re-run the scenario (otherwise the wiped audit log + Messages instantly fill back up).
   const [autoTrigger, setAutoTrigger] = useState(false);
 
+  // LLM cache toggle. `null` until the first /settings fetch resolves.
+  const [llmCacheEnabled, setLlmCacheEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch(`${ENGINE}/settings`)
+      .then(r => r.json())
+      .then((s: { llmCacheEnabled?: boolean }) => {
+        if (typeof s.llmCacheEnabled === 'boolean') setLlmCacheEnabled(s.llmCacheEnabled);
+      })
+      .catch(() => { /* leave as null — chip shows "…" */ });
+  }, []);
+
+  async function handleToggleLlmCache() {
+    if (llmCacheEnabled === null) return;
+    const next = !llmCacheEnabled;
+    setLlmCacheEnabled(next); // optimistic
+    try {
+      const res = await fetch(`${ENGINE}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ llmCacheEnabled: next }),
+      });
+      const body = await res.json() as { llmCacheEnabled?: boolean };
+      if (typeof body.llmCacheEnabled === 'boolean') setLlmCacheEnabled(body.llmCacheEnabled);
+    } catch {
+      // Revert on network failure
+      setLlmCacheEnabled(!next);
+    }
+  }
+
   function handleTrigger() {
     setActiveScreen('live-run');
     setAutoTrigger(true);
@@ -43,7 +73,12 @@ export function AppShell() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[--surface-app]">
-      <TopBar onTrigger={handleTrigger} onReset={handleReset} />
+      <TopBar
+        onTrigger={handleTrigger}
+        onReset={handleReset}
+        llmCacheEnabled={llmCacheEnabled}
+        onToggleLlmCache={handleToggleLlmCache}
+      />
       <div className="flex flex-1 overflow-hidden">
         <LeftNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
         <main className="flex-1 overflow-y-auto p-6">

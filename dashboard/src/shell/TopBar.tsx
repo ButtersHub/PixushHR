@@ -7,6 +7,10 @@ import papayaLogo from '../ui/assets/brand/papaya-logo.png';
 interface TopBarProps {
   onTrigger: () => void;
   onReset: () => void;
+  /** Current state of the engine LLM cache. `null` while loading from /settings. */
+  llmCacheEnabled: boolean | null;
+  /** Click handler for the LLM Cache chip — flips the engine flag. */
+  onToggleLlmCache: () => void;
 }
 
 interface ToggleChip {
@@ -22,7 +26,7 @@ const STATUS_CHIPS: ToggleChip[] = [
   { label: 'Encrypt', value: 'ON', variant: 'neutral' },
 ];
 
-export function TopBar({ onTrigger, onReset }: TopBarProps) {
+export function TopBar({ onTrigger, onReset, llmCacheEnabled, onToggleLlmCache }: TopBarProps) {
   return (
     <header className="flex items-center justify-between gap-4 px-4 bg-[--surface-topbar] border-b border-[--border-default] h-12 flex-shrink-0">
       {/* Brand */}
@@ -60,6 +64,19 @@ export function TopBar({ onTrigger, onReset }: TopBarProps) {
             <Badge variant={chip.variant} size="xs">{chip.value}</Badge>
           </span>
         ))}
+        {/* LLM Cache — the only chip that's actually wired to engine state today. */}
+        <button
+          type="button"
+          onClick={onToggleLlmCache}
+          disabled={llmCacheEnabled === null}
+          title={llmCacheEnabled === null ? 'Loading…' : `Click to turn LLM cache ${llmCacheEnabled ? 'off' : 'on'}`}
+          className="flex items-center gap-1.5 rounded hover:bg-[--surface-hover] px-1 -mx-1 transition disabled:opacity-60 disabled:cursor-wait"
+        >
+          <span className="text-[11px] text-[--text-tertiary] font-medium">LLM Cache</span>
+          <Badge variant={llmCacheEnabled === null ? 'neutral' : llmCacheEnabled ? 'real' : 'off'} size="xs">
+            {llmCacheEnabled === null ? '…' : llmCacheEnabled ? 'ON' : 'OFF'}
+          </Badge>
+        </button>
       </div>
 
       {/* Actions */}

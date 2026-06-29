@@ -3,6 +3,7 @@ import type { HermesClient } from "./hermes.js";
 import type { InMemoryStore, Contract } from "./store.js";
 import { classifyIntent, type Intent } from "./intent.js";
 import { emitTraceEvent, startGeneration } from "./tracing.js";
+import { getLlmCacheEnabled } from "./settings.js";
 
 /** Sentinel string the orchestrator embeds in the parser system prompt. StubHermes (used by
  *  unit tests + the no-creds smoke compose stack) detects it and returns a JSON plan instead
@@ -401,8 +402,9 @@ export interface ResolveIntentResult {
 
 export async function resolveIntent(opts: ResolveIntentOpts): Promise<ResolveIntentResult> {
   const { task, tenant, scenarioId, store, hermes, cache } = opts;
+  const cacheActive = getLlmCacheEnabled();
   const key = cacheKey(tenant, task);
-  if (cache) {
+  if (cache && cacheActive) {
     const cached = cache.get(key);
     if (cached) {
       emitTraceEvent("intent-cache-hit", {
@@ -414,7 +416,7 @@ export async function resolveIntent(opts: ResolveIntentOpts): Promise<ResolveInt
 
   const llm = await parsePlanLLM(task, hermes);
   if (llm.source === "llm") {
-    cache?.set(key, llm.plan);
+    if (cacheActive) cache?.set(key, llm.plan);
     return {
       intent: planToIntent(llm.plan, store, tenant),
       plan: llm.plan,

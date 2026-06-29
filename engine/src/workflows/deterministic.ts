@@ -6,6 +6,15 @@ import type { Contract } from "../store.js";
 import type { ParsedTermination } from "../intent.js";
 import type { HermesClient } from "../hermes.js";
 import { runTracedTool } from "../tracing.js";
+import { getLlmCacheEnabled } from "../settings.js";
+
+/** Clear the deterministic-branch LLM caches. Called from POST /reset so a fresh
+ *  Reset gives a truly cold workspace (no stale humanized welcome bodies or Q&A
+ *  answers carrying over from a previous demo run). */
+export function clearDeterministicLlmCaches(): void {
+  welcomeBodyCache.clear();
+  qaAnswersCache.clear();
+}
 
 /** executeTool wrapper that also emits a Langfuse tool observation under the active
  *  trace span. Used by the deterministic branches so onboarding/offboarding scenario
@@ -451,8 +460,11 @@ async function composeWelcomeBodyHumanized(
   opts: { promptSourced?: boolean } = {},
 ): Promise<string> {
   const cacheK = welcomeBodyCacheKey(candidate, branding);
-  const cached = welcomeBodyCache.get(cacheK);
-  if (cached) return cached;
+  const cacheActive = getLlmCacheEnabled();
+  if (cacheActive) {
+    const cached = welcomeBodyCache.get(cacheK);
+    if (cached) return cached;
+  }
   if (!hermes) return composeWelcomeBodyTemplate(candidate, branding);
 
   const safeCultureLine = branding?.cultureVideoUrl && !isPlaceholderUrl(branding.cultureVideoUrl)
@@ -510,7 +522,7 @@ async function composeWelcomeBodyHumanized(
       "",
       "— Papaya People Operations",
     ].join("\n");
-    welcomeBodyCache.set(cacheK, wrapped);
+    if (cacheActive) welcomeBodyCache.set(cacheK, wrapped);
     return wrapped;
   } catch {
     return composeWelcomeBodyTemplate(candidate, branding);
@@ -543,8 +555,11 @@ async function composeQAAnswersLLM(
     (facts.jurisdictions ?? []).join(","), facts.branding?.companyStory ?? "",
   ].join("|");
   const cacheK = qaCacheKey(questions, factsKey);
-  const cached = qaAnswersCache.get(cacheK);
-  if (cached) return cached;
+  const cacheActive = getLlmCacheEnabled();
+  if (cacheActive) {
+    const cached = qaAnswersCache.get(cacheK);
+    if (cached) return cached;
+  }
   if (!hermes) return composeQAAnswersFallback(questions);
 
   const systemPrompt = [
@@ -593,7 +608,7 @@ async function composeQAAnswersLLM(
     if (!body || body.length < 20) return composeQAAnswersFallback(questions);
     // Strip any URLs the LLM may have slipped in.
     body = body.replace(/\bhttps?:\/\/\S+/gi, "[link removed]");
-    qaAnswersCache.set(cacheK, body);
+    if (cacheActive) qaAnswersCache.set(cacheK, body);
     return body;
   } catch {
     return composeQAAnswersFallback(questions);

@@ -10,6 +10,9 @@ import { gateToolCall, CONNECTORS, connectorState, defaultState, roleForConnecto
 import { seedFixtures } from "./fixtures.js";
 import type { ExecuteRequest, ExecuteResponse } from "./models.js";
 import { traceToolCall } from "./tracing.js";
+import { getLlmCacheEnabled, setLlmCacheEnabled } from "./settings.js";
+import { _resetPlanCacheForTests as clearPlanCache } from "./orchestrator.js";
+import { clearDeterministicLlmCaches } from "./workflows/deterministic.js";
 
 export interface Deps {
   store: InMemoryStore;
@@ -217,6 +220,11 @@ export function buildApp(deps: Deps): FastifyInstance {
   app.post("/reset", async () => {
     store.reset();
     seedFixtures(store);
+    // Flush LLM caches too — Reset = truly cold next run. Otherwise the next
+    // /execute on the same task would short-circuit on a stale plan, welcome
+    // body, or Q&A answer cached from the previous demo run.
+    clearPlanCache();
+    clearDeterministicLlmCaches();
     store.audit({
       tenant: "papaya",
       capability: "system.reset",
@@ -228,6 +236,30 @@ export function buildApp(deps: Deps): FastifyInstance {
       status: "success",
     });
     return { ok: true };
+  });
+
+  app.get("/settings", async () => ({ llmCacheEnabled: getLlmCacheEnabled() }));
+
+  const settingsPatchSchema = z.object({ llmCacheEnabled: z.boolean().optional() });
+  app.patch<{ Body: unknown }>("/settings", async (req, reply) => {
+    const parsed = settingsPatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { ok: false, error: "invalid settings payload" };
+    }
+    if (parsed.data.llmCacheEnabled !== undefined) {
+      const next = parsed.data.llmCacheEnabled;
+      const prev = getLlmCacheEnabled();
+      setLlmCacheEnabled(next);
+      // Toggling OFF flushes the existing cache contents so the next call really
+      // hits the LLM. Toggling ON does NOT seed anything; it just lets the next
+      // miss populate the cache.
+      if (prev && !next) {
+        clearPlanCache();
+        clearDeterministicLlmCaches();
+      }
+    }
+    return { ok: true, llmCacheEnabled: getLlmCacheEnabled() };
   });
 
   app.get<{ Querystring: { tenant?: string } }>("/integrations", async (req) => {

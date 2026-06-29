@@ -106,7 +106,13 @@ reference/   third-party clones (sensei, hermes-agent, langfuse-skills) — giti
   `agent.environment_probe: false`. Set `approvals.mode: off` because the HTTP API cannot answer
   interactive approval prompts. This prevents approval-blocked tool attempts and unrelated
   cron/file exploration while retaining the LLM-driven `hris-tool` workflow and Hermes' hardline
-  command blocks.
+  command blocks. **Gotcha:** `hermes config set approvals.mode off` coerces `off` to the YAML
+  boolean `false`, which Hermes does NOT treat as the same as the string `"off"` — tool calls
+  still hit the approval gate and the agent stops mid-workflow with a polite "the system blocked
+  the first write action" recap. Workaround: edit `~/.hermes/config.yaml` directly so the value
+  reads `mode: "off"` (quoted string), then `docker compose restart agent`. Symptom in the audit
+  log: read-only steps (`ats.get_contract`, `hiring_manager.ask`) succeed and the run finishes
+  with `status: done` after only 2–3 actions instead of the full 7.
 - **WhatsApp/Email demo notes:** Papaya-Ops group id is `120363408400308850@g.us`. Use
   `require_mention: true`, `group_policy: allowlist`, `display.platforms.whatsapp.tool_progress=off`,
   and keep `platform_toolsets.whatsapp: [hermes-whatsapp]` so the `send_message` tool is
